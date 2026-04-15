@@ -3,13 +3,17 @@ Type stubs for the dag Python extension.
 
 Metadata on nodes and edges must be JSON-serialisable (None, bool, int, float,
 str, list, or dict with string keys).  Non-finite floats (NaN, ±Inf) are not
-valid JSON and will raise ``ValueError``.
+valid JSON and will raise ``ValueError``.  Nesting deeper than
+``MAX_JSON_CONVERSION_DEPTH`` levels also raises ``ValueError``.
 """
 
 from typing import Any, Optional, Tuple
 
 # Default maximum JSON string length for :meth:`Dag.from_json` (256 MiB).
 DEFAULT_MAX_DAG_JSON_BYTES: int
+
+# Maximum list/dict nesting when converting metadata to or from JSON (inclusive).
+MAX_JSON_CONVERSION_DEPTH: int
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
 
@@ -148,15 +152,15 @@ class Dag:
     def ancestors(self, node: NodeId) -> list[NodeId]:
         """Return all ancestors of *node* (nodes from which it is reachable).
 
-        The returned list is unordered. Raises DagNodeNotFoundError if the node
-        does not exist.
+        The returned list is unordered and may differ across processes. Raises
+        DagNodeNotFoundError if the node does not exist.
         """
 
     def descendants(self, node: NodeId) -> list[NodeId]:
         """Return all descendants of *node* (nodes reachable from it).
 
-        The returned list is unordered. Raises DagNodeNotFoundError if the node
-        does not exist.
+        The returned list is unordered and may differ across processes. Raises
+        DagNodeNotFoundError if the node does not exist.
         """
 
     def roots(self) -> list[NodeId]:
@@ -173,6 +177,9 @@ class Dag:
         Raises :class:`DagCycleError` if the graph is not acyclic (including a graph
         produced by deserialisation that contains a cycle).
         """
+
+    def validate_acyclic(self) -> None:
+        """Raise :class:`DagCycleError` if the graph contains a cycle (same check as ``topological_sort``)."""
 
     def has_path(self, from_node: NodeId, to_node: NodeId) -> bool:
         """Return True if there is a directed path from *from_node* to *to_node*.
@@ -198,4 +205,7 @@ class Dag:
 
         Raises ValueError if *s* is too large, not valid JSON, or does not match
         the expected schema.
+
+        JSON deserialisation does not prove the graph is acyclic; for untrusted
+        input call :meth:`validate_acyclic` (or ``topological_sort()``) after loading.
         """

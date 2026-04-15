@@ -53,8 +53,13 @@ impl NodeId {
     ///
     /// Intended exclusively for language-binding layers (e.g. the Node.js
     /// binding that round-trips IDs through JavaScript `number`). Enable the
-    /// `raw-id-access` crate feature; using this to manufacture arbitrary IDs
-    /// is unsupported and may panic or produce incorrect results.
+    /// `raw-id-access` crate feature.
+    ///
+    /// **Safety:** Only pass values previously returned by [`NodeId::raw`] for
+    /// IDs that still belong to the same graph. Arbitrary `u64` values can
+    /// refer to empty slots or the wrong entity; internal slot-map indexing may
+    /// **panic** on some invalid encodings, and API methods typically return
+    /// [`DagError::NodeNotFound`] for keys that do not resolve to a live node.
     #[doc(hidden)]
     pub fn from_raw(v: u64) -> Self {
         NodeId(v)
@@ -83,6 +88,9 @@ impl EdgeId {
     /// Constructs an `EdgeId` from its raw `u64` encoding.
     ///
     /// Same caveats as [`NodeId::from_raw`].
+    ///
+    /// **Safety:** See [`NodeId::from_raw`]; invalid keys can cause panics when
+    /// indexing internal storage or yield [`DagError::EdgeNotFound`].
     #[doc(hidden)]
     pub fn from_raw(v: u64) -> Self {
         EdgeId(v)
@@ -122,6 +130,16 @@ pub enum DagJsonError {
 
 /// Deserialise a [`Dag`] from a JSON string, rejecting inputs larger than
 /// `max_bytes` before parsing.
+///
+/// **Integrity:** JSON deserialisation does **not** verify that the graph is
+/// acyclic. A malicious or buggy payload can therefore deserialize into a
+/// [`Dag`] that contains cycles. For untrusted input, call
+/// [`Dag::validate_acyclic`] (or [`Dag::topological_sort`]) after parsing.
+///
+/// ```ignore
+/// let dag: Dag<MyNode, MyEdge> = parse_dag_from_json_str(s, max_bytes)?;
+/// dag.validate_acyclic()?;
+/// ```
 #[cfg(feature = "serde")]
 pub fn parse_dag_from_json_str<N, E, P>(
     s: &str,
@@ -221,6 +239,10 @@ struct EdgeData<E> {
 
 /// A directed acyclic graph generic over node metadata `N`, edge metadata `E`,
 /// and cycle-check policy `P` (defaults to [`CheckCycles`]).
+///
+/// With the `serde` feature, serialisation round-trips graph structure and IDs.
+/// Deserialisation does **not** enforce acyclicity; use [`Dag::validate_acyclic`]
+/// after loading untrusted data.
 ///
 /// # Dependency injection
 ///
@@ -429,7 +451,9 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
 
     /// All ancestors of `id` (nodes from which `id` is reachable).
     ///
-    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering. Because a
+    /// [`HashSet`] is used internally, iteration order can also differ **across
+    /// processes** (hash randomisation), not just between calls in one run.
     pub fn ancestors(&self, id: NodeId) -> Result<Vec<NodeId>, DagError> {
         if !self.nodes.contains_key(id.key()) {
             return Err(DagError::NodeNotFound(id));
@@ -451,7 +475,9 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
 
     /// All descendants of `id` (nodes reachable from `id`).
     ///
-    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering. As with
+    /// [`Dag::ancestors`], order may differ across processes due to hash
+    /// randomisation.
     pub fn descendants(&self, id: NodeId) -> Result<Vec<NodeId>, DagError> {
         if !self.nodes.contains_key(id.key()) {
             return Err(DagError::NodeNotFound(id));
@@ -540,6 +566,19 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             return Err(DagError::NotAcyclic);
         }
         Ok(result)
+    }
+
+    /// Verifies that the graph is acyclic (has a topological ordering).
+    ///
+    /// Equivalent to [`Dag::topological_sort`] succeeding, but makes intent
+    /// explicit when validating data loaded from JSON or built with
+    /// [`SkipCycleCheck`].
+    ///
+    /// **Complexity:** Same as [`Dag::topological_sort`] — **O(V + E)** time and
+    /// **O(V)** auxiliary space (this implementation reuses the topological sort
+    /// to avoid duplicating Kahn’s algorithm).
+    pub fn validate_acyclic(&self) -> Result<(), DagError> {
+        self.topological_sort().map(|_| ())
     }
 
     /// Returns `true` if there is a directed path from `from` to `to`.

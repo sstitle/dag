@@ -226,7 +226,8 @@ impl JsDag {
 
     /// Return all ancestors of `id` (nodes from which it is reachable).
     ///
-    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering; order may
+    /// also differ across processes (hash randomisation).
     #[napi]
     pub fn ancestors(&self, id: f64) -> Result<Vec<f64>> {
         let ids = self
@@ -238,7 +239,8 @@ impl JsDag {
 
     /// Return all descendants of `id` (nodes reachable from it).
     ///
-    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering; order may
+    /// also differ across processes (hash randomisation).
     #[napi]
     pub fn descendants(&self, id: f64) -> Result<Vec<f64>> {
         let ids = self
@@ -273,6 +275,12 @@ impl JsDag {
     pub fn topological_sort(&self) -> Result<Vec<f64>> {
         let ids = self.inner.topological_sort().map_err(dag_error_to_napi)?;
         ids.into_iter().map(try_node_id_to_f64).collect()
+    }
+
+    /// Verify that the graph is acyclic (same condition as `topological_sort` succeeding).
+    #[napi]
+    pub fn validate_acyclic(&self) -> Result<()> {
+        self.inner.validate_acyclic().map_err(dag_error_to_napi)
     }
 
     /// Whether there is a directed path from `from` to `to`.

@@ -80,6 +80,7 @@ use dag_core::{parse_dag_from_json_str, Dag, DEFAULT_MAX_DAG_JSON_BYTES};
 
 let dag: Dag<String, ()> =
     parse_dag_from_json_str(json_str, DEFAULT_MAX_DAG_JSON_BYTES)?;
+dag.validate_acyclic()?; // JSON does not prove acyclicity; check untrusted payloads
 ```
 
 ### Python
@@ -103,6 +104,7 @@ dag.remove_edge(e)
 # Serialisation
 json_str = dag.to_json()
 dag2 = Dag.from_json(json_str)  # IDs are preserved
+dag2.validate_acyclic()  # optional: JSON does not prove acyclicity
 
 order = dag.topological_sort()  # raises DagCycleError if the graph is not acyclic
 ```
@@ -111,7 +113,10 @@ Integer metadata is limited to the range representable in JSON as a 64-bit signe
 integer (roughly `i64` / `u64`); larger Python integers raise `ValueError`.
 
 `Dag.from_json` rejects strings longer than `DEFAULT_MAX_DAG_JSON_BYTES` (256 MiB) before
-parsing; pass `max_bytes=` to override (for example in tests).
+parsing; pass `max_bytes=` to override (for example in tests). Deserialisation does not
+prove the graph is acyclic; for untrusted JSON, call `validate_acyclic()` (or
+`topological_sort()`) after loading. Metadata conversion is limited to
+`MAX_JSON_CONVERSION_DEPTH` levels of nested `list`/`dict` to avoid stack exhaustion.
 
 Install: `pip install dag` (after building with `maturin`)
 
@@ -132,12 +137,13 @@ dag.removeEdge(e);
 
 const json = dag.toJson();
 const dag2 = Dag.fromJson(json);  // IDs are preserved
+dag2.validateAcyclic(); // JSON does not prove acyclicity; check untrusted payloads
 ```
 
 Install: `npm install @dag-rs/dag`
 
 Errors thrown by the native binding use stable message prefixes (`DAG_NODE_NOT_FOUND:`,
-`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:` (including a failed `topologicalSort` on a cyclic
+`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:` (including a failed `topologicalSort` or `validateAcyclic` on a cyclic
 graph), `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`, `DAG_ID_NOT_REPRESENTABLE:`,
 `DAG_JSON_TOO_LARGE:`, `DAG_JSON_PARSE:`) so you can branch without `instanceof`. The package
 also exports string constants (`DAG_ERROR_CODE_NODE_NOT_FOUND`, `DAG_ERROR_CODE_JSON_TOO_LARGE`,

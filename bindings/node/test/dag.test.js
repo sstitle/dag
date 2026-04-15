@@ -258,6 +258,17 @@ test('topologicalSort empty', () => {
   assert.deepEqual(new Dag().topologicalSort(), []);
 });
 
+test('validateAcyclic succeeds on chain', () => {
+  const { dag } = makeChain();
+  dag.validateAcyclic();
+});
+
+test('validateAcyclic throws on cyclic graph from fixture JSON', () => {
+  const jsonPath = path.join(__dirname, 'fixtures', 'cyclic_two_node.json');
+  const dag = Dag.fromJson(fs.readFileSync(jsonPath, 'utf8'));
+  assert.throws(() => dag.validateAcyclic(), /DAG_CYCLE_DETECTED/);
+});
+
 test('topologicalSort throws on cyclic graph from fixture JSON', () => {
   const jsonPath = path.join(__dirname, 'fixtures', 'cyclic_two_node.json');
   const dag = Dag.fromJson(fs.readFileSync(jsonPath, 'utf8'));

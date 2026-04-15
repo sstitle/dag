@@ -52,13 +52,15 @@ export declare class Dag {
   /**
    * Return all ancestors of `id` (nodes from which it is reachable).
    *
-   * **Order is unspecified** — do not rely on BFS/DFS ordering.
+   * **Order is unspecified** — do not rely on BFS/DFS ordering; order may
+   * also differ across processes (hash randomisation).
    */
   ancestors(id: number): Array<number>
   /**
    * Return all descendants of `id` (nodes reachable from it).
    *
-   * **Order is unspecified** — do not rely on BFS/DFS ordering.
+   * **Order is unspecified** — do not rely on BFS/DFS ordering; order may
+   * also differ across processes (hash randomisation).
    */
   descendants(id: number): Array<number>
   /** Nodes with no incoming edges. */
@@ -67,6 +69,8 @@ export declare class Dag {
   leaves(): Array<number>
   /** A valid topological ordering of all nodes. */
   topologicalSort(): Array<number>
+  /** Verify that the graph is acyclic (same condition as `topological_sort` succeeding). */
+  validateAcyclic(): void
   /** Whether there is a directed path from `from` to `to`. */
   hasPath(from: number, to: number): boolean
   /** Return the metadata of node `id`. */

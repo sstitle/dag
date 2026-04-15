@@ -79,14 +79,11 @@ fn test_set_edge_meta() {
 
 #[test]
 fn test_node_not_found_error() {
-    let (dag, [n1, n2, n3]) = chain();
-    let _ = (n1, n2, n3);
     // Create a dangling id by removing a node.
-    let mut dag2: Dag<(), ()> = Dag::new();
-    let x = dag2.add_node(());
-    dag2.remove_node(x).unwrap();
-    assert!(matches!(dag2.node_meta(x), Err(DagError::NodeNotFound(_))));
-    let _ = dag;
+    let mut dag: Dag<(), ()> = Dag::new();
+    let x = dag.add_node(());
+    dag.remove_node(x).unwrap();
+    assert!(matches!(dag.node_meta(x), Err(DagError::NodeNotFound(_))));
 }
 
 // ── cycle rejection ────────────────────────────────────────────────────────────
@@ -279,6 +276,29 @@ fn test_disconnected_node_no_ancestors_no_descendants() {
 }
 
 // ── topological sort ──────────────────────────────────────────────────────────
+
+#[test]
+fn test_validate_acyclic_empty() {
+    let dag: Dag<(), ()> = Dag::new();
+    assert!(dag.validate_acyclic().is_ok());
+}
+
+#[test]
+fn test_validate_acyclic_chain() {
+    let (dag, _) = chain();
+    assert!(dag.validate_acyclic().is_ok());
+}
+
+#[test]
+fn test_validate_acyclic_cycle_fails() {
+    use crate::SkipCycleCheck;
+    let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    dag.add_edge(b, a, ()).unwrap();
+    assert!(matches!(dag.validate_acyclic(), Err(DagError::NotAcyclic)));
+}
 
 #[test]
 fn test_topo_sort_chain() {
@@ -573,6 +593,15 @@ mod serde_tests {
         let s = "x".repeat(100);
         let r = parse_dag_from_json_str::<(), (), crate::CheckCycles>(&s, 10);
         assert!(matches!(r, Err(crate::DagJsonError::TooLarge { .. })));
+    }
+
+    #[test]
+    fn test_parse_json_then_validate_acyclic() {
+        let (dag, _) = chain_owned();
+        let json = serde_json::to_string(&dag).unwrap();
+        let dag2: Dag<String, ()> =
+            parse_dag_from_json_str(&json, DEFAULT_MAX_DAG_JSON_BYTES).unwrap();
+        assert!(dag2.validate_acyclic().is_ok());
     }
 
     #[test]

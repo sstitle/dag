@@ -5,6 +5,7 @@ from dag import (
     Dag,
     NodeId,
     EdgeId,
+    MAX_JSON_CONVERSION_DEPTH,
     DagNodeNotFoundError,
     DagEdgeNotFoundError,
     DagCycleError,
@@ -430,3 +431,29 @@ def test_from_json_invalid_raises():
 def test_from_json_rejects_oversized_string():
     with pytest.raises(ValueError, match="maximum size"):
         Dag.from_json("x" * 100, max_bytes=10)
+
+
+def test_validate_acyclic():
+    dag, _, _, _ = make_chain()
+    dag.validate_acyclic()
+
+
+def test_max_json_nesting_depth_exceeded():
+    dag = Dag()
+    d = {}
+    cur = d
+    for _ in range(MAX_JSON_CONVERSION_DEPTH + 1):
+        cur["k"] = {}
+        cur = cur["k"]
+    with pytest.raises(ValueError, match="nesting depth"):
+        dag.add_node(d)
+
+
+def test_max_json_nesting_at_limit_ok():
+    dag = Dag()
+    d = {}
+    cur = d
+    for _ in range(MAX_JSON_CONVERSION_DEPTH):
+        cur["k"] = {}
+        cur = cur["k"]
+    dag.add_node(d)

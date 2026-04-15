@@ -7,6 +7,10 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyString};
 use serde_json::Value;
 
+/// Maximum nesting depth when converting Python metadata to JSON (lists/dicts)
+/// and JSON back to Python. Prevents stack exhaustion on pathological input.
+pub const MAX_JSON_CONVERSION_DEPTH: usize = 64;
+
 // ── JSON ↔ Python conversion ──────────────────────────────────────────────────
 
 /// Maps a Python `int` to a `serde_json::Number` (i64, u64, or non-integer f64 via JSON only).
@@ -30,6 +34,14 @@ fn python_int_to_json_number(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Num
 }
 
 fn py_to_json<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Value> {
+    py_to_json_inner(py, obj, MAX_JSON_CONVERSION_DEPTH)
+}
+
+fn py_to_json_inner<'py>(
+    py: Python<'py>,
+    obj: &Bound<'py, PyAny>,
+    depth: usize,
+) -> PyResult<Value> {
     use pyo3::types::{PyBool, PyInt};
 
     if obj.is_none() {
@@ -59,17 +71,29 @@ fn py_to_json<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Value> 
         return Ok(Value::String(obj.extract::<String>()?));
     }
     if let Ok(list) = obj.downcast::<PyList>() {
+        if depth == 0 {
+            return Err(PyValueError::new_err(format!(
+                "maximum JSON nesting depth ({}) exceeded when converting Python object",
+                MAX_JSON_CONVERSION_DEPTH
+            )));
+        }
         let items = list
             .iter()
-            .map(|item| py_to_json(py, &item))
+            .map(|item| py_to_json_inner(py, &item, depth - 1))
             .collect::<PyResult<Vec<_>>>()?;
         return Ok(Value::Array(items));
     }
     if let Ok(dict) = obj.downcast::<PyDict>() {
+        if depth == 0 {
+            return Err(PyValueError::new_err(format!(
+                "maximum JSON nesting depth ({}) exceeded when converting Python object",
+                MAX_JSON_CONVERSION_DEPTH
+            )));
+        }
         let mut map = serde_json::Map::new();
         for (k, v) in dict.iter() {
             let key: String = k.extract()?;
-            map.insert(key, py_to_json(py, &v)?);
+            map.insert(key, py_to_json_inner(py, &v, depth - 1)?);
         }
         return Ok(Value::Object(map));
     }
@@ -80,6 +104,10 @@ fn py_to_json<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Value> 
 }
 
 fn json_to_py(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
+    json_to_py_inner(py, val, MAX_JSON_CONVERSION_DEPTH)
+}
+
+fn json_to_py_inner(py: Python<'_>, val: &Value, depth: usize) -> PyResult<PyObject> {
     match val {
         Value::Null => Ok(py.None()),
         Value::Bool(b) => Ok((*b).into_py(py)),
@@ -96,16 +124,28 @@ fn json_to_py(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
         }
         Value::String(s) => Ok(s.clone().into_py(py)),
         Value::Array(arr) => {
+            if depth == 0 {
+                return Err(PyValueError::new_err(format!(
+                    "maximum JSON nesting depth ({}) exceeded when converting JSON to Python",
+                    MAX_JSON_CONVERSION_DEPTH
+                )));
+            }
             let items: Vec<PyObject> = arr
                 .iter()
-                .map(|v| json_to_py(py, v))
+                .map(|v| json_to_py_inner(py, v, depth - 1))
                 .collect::<PyResult<_>>()?;
             Ok(PyList::new_bound(py, items).into())
         }
         Value::Object(map) => {
+            if depth == 0 {
+                return Err(PyValueError::new_err(format!(
+                    "maximum JSON nesting depth ({}) exceeded when converting JSON to Python",
+                    MAX_JSON_CONVERSION_DEPTH
+                )));
+            }
             let dict = PyDict::new_bound(py);
             for (k, v) in map {
-                dict.set_item(k, json_to_py(py, v)?)?;
+                dict.set_item(k, json_to_py_inner(py, v, depth - 1)?)?;
             }
             Ok(dict.into())
         }
@@ -250,6 +290,7 @@ impl PyDag {
     /// All ancestors of `node` (nodes from which it is reachable).
     ///
     /// The returned list is **unordered**; do not rely on BFS/DFS ordering.
+    /// Order may also differ across processes (hash randomisation).
     pub fn ancestors(&self, node: &PyNodeId) -> PyResult<Vec<PyNodeId>> {
         self.inner
             .ancestors(node.0)
@@ -260,6 +301,7 @@ impl PyDag {
     /// All descendants of `node` (nodes reachable from it).
     ///
     /// The returned list is **unordered**; do not rely on BFS/DFS ordering.
+    /// Order may also differ across processes (hash randomisation).
     pub fn descendants(&self, node: &PyNodeId) -> PyResult<Vec<PyNodeId>> {
         self.inner
             .descendants(node.0)
@@ -285,6 +327,11 @@ impl PyDag {
             .topological_sort()
             .map(|ids| ids.into_iter().map(PyNodeId).collect())
             .map_err(to_py_err)
+    }
+
+    /// Verify that the graph is acyclic (same condition as `topological_sort` succeeding).
+    pub fn validate_acyclic(&self) -> PyResult<()> {
+        self.inner.validate_acyclic().map_err(to_py_err)
     }
 
     /// Whether there is a directed path from `from_node` to `to_node`.
@@ -356,6 +403,7 @@ impl PyDag {
 #[pymodule]
 fn dag(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("DEFAULT_MAX_DAG_JSON_BYTES", DEFAULT_MAX_DAG_JSON_BYTES)?;
+    m.add("MAX_JSON_CONVERSION_DEPTH", MAX_JSON_CONVERSION_DEPTH)?;
     m.add_class::<PyDag>()?;
     m.add_class::<PyNodeId>()?;
     m.add_class::<PyEdgeId>()?;
