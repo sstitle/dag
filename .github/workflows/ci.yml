@@ -64,14 +64,17 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Create virtualenv
+        run: python -m venv .venv
+
       - name: Install maturin and pytest
-        run: pip install maturin pytest
+        run: .venv/bin/pip install maturin pytest
 
       - name: Build and install Python binding
-        run: maturin develop --manifest-path bindings/python/Cargo.toml
+        run: .venv/bin/maturin develop --manifest-path bindings/python/Cargo.toml
 
       - name: Run Python tests
-        run: pytest bindings/python/tests/ -v
+        run: .venv/bin/pytest bindings/python/tests/ -v
 
   # ── Node binding ───────────────────────────────────────────────────────────
   test-node:
