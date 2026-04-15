@@ -1,0 +1,5 @@
+result*
+.direnv/
+scratchpad.md
+__pycache__/
+*.egg-info/
