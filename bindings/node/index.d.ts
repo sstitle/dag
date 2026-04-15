@@ -10,6 +10,7 @@
 export const DAG_ERROR_CODE_NODE_NOT_FOUND: string
 export const DAG_ERROR_CODE_EDGE_NOT_FOUND: string
 export const DAG_ERROR_CODE_CYCLE: string
+export const DAG_ERROR_CODE_NOT_ACYCLIC: string
 export const DAG_ERROR_CODE_DUPLICATE_EDGE: string
 export const DAG_ERROR_CODE_INVALID_ID: string
 export const DAG_ERROR_CODE_ID_NOT_REPRESENTABLE: string

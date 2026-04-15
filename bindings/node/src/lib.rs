@@ -72,9 +72,13 @@ fn dag_error_to_napi(e: DagError) -> napi::Error {
         DagError::EdgeNotFound(_) => {
             napi::Error::new(napi::Status::InvalidArg, format!("DAG_EDGE_NOT_FOUND: {e}"))
         }
-        DagError::CycleDetected | DagError::NotAcyclic => napi::Error::new(
+        DagError::CycleDetected => napi::Error::new(
             napi::Status::GenericFailure,
             format!("DAG_CYCLE_DETECTED: {e}"),
+        ),
+        DagError::NotAcyclic => napi::Error::new(
+            napi::Status::GenericFailure,
+            format!("DAG_NOT_ACYCLIC: {e}"),
         ),
         DagError::DuplicateEdge(_, _) => napi::Error::new(
             napi::Status::GenericFailure,
@@ -124,6 +128,9 @@ pub const DAG_ERROR_CODE_EDGE_NOT_FOUND: &'static str = "DAG_EDGE_NOT_FOUND";
 
 #[napi]
 pub const DAG_ERROR_CODE_CYCLE: &'static str = "DAG_CYCLE_DETECTED";
+
+#[napi]
+pub const DAG_ERROR_CODE_NOT_ACYCLIC: &'static str = "DAG_NOT_ACYCLIC";
 
 #[napi]
 pub const DAG_ERROR_CODE_DUPLICATE_EDGE: &'static str = "DAG_DUPLICATE_EDGE";

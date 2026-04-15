@@ -157,6 +157,7 @@ fn json_to_py_inner(py: Python<'_>, val: &Value, depth: usize) -> PyResult<PyObj
 pyo3::create_exception!(dag, DagNodeNotFoundError, pyo3::exceptions::PyException);
 pyo3::create_exception!(dag, DagEdgeNotFoundError, pyo3::exceptions::PyException);
 pyo3::create_exception!(dag, DagCycleError, pyo3::exceptions::PyException);
+pyo3::create_exception!(dag, DagNotAcyclicError, pyo3::exceptions::PyException);
 pyo3::create_exception!(dag, DagDuplicateEdgeError, pyo3::exceptions::PyException);
 
 fn to_py_err(e: DagError) -> PyErr {
@@ -164,7 +165,8 @@ fn to_py_err(e: DagError) -> PyErr {
     match e {
         DagError::NodeNotFound(_) => DagNodeNotFoundError::new_err(msg),
         DagError::EdgeNotFound(_) => DagEdgeNotFoundError::new_err(msg),
-        DagError::CycleDetected | DagError::NotAcyclic => DagCycleError::new_err(msg),
+        DagError::CycleDetected => DagCycleError::new_err(msg),
+        DagError::NotAcyclic => DagNotAcyclicError::new_err(msg),
         DagError::DuplicateEdge(_, _) => DagDuplicateEdgeError::new_err(msg),
     }
 }
@@ -248,8 +250,8 @@ impl PyDag {
 
     /// Add a directed edge `from_node → to_node`.
     ///
-    /// Raises `DagCycleError` if the edge would create a cycle.
-    /// Raises `DagDuplicateEdgeError` if an edge between these nodes already exists.
+    /// Raises [`DagCycleError`] if the edge would create a cycle.
+    /// Raises [`DagDuplicateEdgeError`] if an edge between these nodes already exists.
     pub fn add_edge(
         &mut self,
         py: Python<'_>,
@@ -331,7 +333,7 @@ impl PyDag {
 
     /// A valid topological ordering of all nodes.
     ///
-    /// Raises [`DagCycleError`] if the graph contains a cycle.
+    /// Raises [`DagNotAcyclicError`] if the graph contains a cycle.
     pub fn topological_sort(&self) -> PyResult<Vec<PyNodeId>> {
         self.inner
             .topological_sort()
@@ -340,6 +342,8 @@ impl PyDag {
     }
 
     /// Verify that the graph is acyclic (same condition as `topological_sort` succeeding).
+    ///
+    /// Raises [`DagNotAcyclicError`] if the graph contains a cycle.
     pub fn validate_acyclic(&self) -> PyResult<()> {
         self.inner.validate_acyclic().map_err(to_py_err)
     }
@@ -426,6 +430,10 @@ fn dag(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m.py().get_type_bound::<DagEdgeNotFoundError>(),
     )?;
     m.add("DagCycleError", m.py().get_type_bound::<DagCycleError>())?;
+    m.add(
+        "DagNotAcyclicError",
+        m.py().get_type_bound::<DagNotAcyclicError>(),
+    )?;
     m.add(
         "DagDuplicateEdgeError",
         m.py().get_type_bound::<DagDuplicateEdgeError>(),

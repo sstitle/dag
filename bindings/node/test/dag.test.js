@@ -284,13 +284,13 @@ test('validateAcyclic succeeds on chain', () => {
 test('validateAcyclic throws on cyclic graph from fixture JSON', () => {
   const jsonPath = path.join(__dirname, 'fixtures', 'cyclic_two_node.json');
   const dag = Dag.fromJson(fs.readFileSync(jsonPath, 'utf8'));
-  assert.throws(() => dag.validateAcyclic(), /DAG_CYCLE_DETECTED/);
+  assert.throws(() => dag.validateAcyclic(), /DAG_NOT_ACYCLIC/);
 });
 
 test('topologicalSort throws on cyclic graph from fixture JSON', () => {
   const jsonPath = path.join(__dirname, 'fixtures', 'cyclic_two_node.json');
   const dag = Dag.fromJson(fs.readFileSync(jsonPath, 'utf8'));
-  assert.throws(() => dag.topologicalSort(), /DAG_CYCLE_DETECTED/);
+  assert.throws(() => dag.topologicalSort(), /DAG_NOT_ACYCLIC/);
 });
 
 // ── hasPath ───────────────────────────────────────────────────────────────────

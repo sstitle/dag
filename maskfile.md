@@ -1,7 +1,9 @@
 # Maskfile
 
 This project uses [mask](https://github.com/jacobdeichert/mask) as a task runner.
-Run tasks from the repo root (e.g. inside `nix develop`).
+Run tasks from the repo root. Prefer **`nix develop`** (or `nix develop -c mask <task>`) so
+Python, Rust, maturin, and Node match the flake and CI; ad-hoc shells can hit toolchain
+mismatches (e.g. maturin targeting the wrong host).
 
 ## format
 

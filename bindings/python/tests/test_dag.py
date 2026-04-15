@@ -1,6 +1,8 @@
 import math
 import json
 import pytest
+from pathlib import Path
+
 from dag import (
     Dag,
     NodeId,
@@ -9,6 +11,7 @@ from dag import (
     DagNodeNotFoundError,
     DagEdgeNotFoundError,
     DagCycleError,
+    DagNotAcyclicError,
     DagDuplicateEdgeError,
 )
 
@@ -183,6 +186,23 @@ def test_self_loop_raises_cycle_error():
 
 def test_cycle_error_is_exception_subclass():
     assert issubclass(DagCycleError, Exception)
+
+
+def test_cycle_detected_vs_not_acyclic_exceptions():
+    """``DagCycleError`` is for a bad edge insert; ``DagNotAcyclicError`` is for global acyclicity."""
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    dag.add_edge(n1, n2, None)
+    with pytest.raises(DagCycleError):
+        dag.add_edge(n2, n1, None)
+
+    fixture = Path(__file__).parent / "fixtures" / "cyclic_two_node.json"
+    cyclic = Dag.from_json(fixture.read_text())
+    with pytest.raises(DagNotAcyclicError):
+        cyclic.validate_acyclic()
+    with pytest.raises(DagNotAcyclicError):
+        cyclic.topological_sort()
 
 
 # ── duplicate-edge rejection ──────────────────────────────────────────────────
@@ -468,10 +488,13 @@ def test_max_json_nesting_depth_exceeded():
 
 
 def test_max_json_nesting_at_limit_ok():
+    """Exactly ``MAX_JSON_CONVERSION_DEPTH`` nested dicts: ``range(MAX - 1)`` iterations
+    build a chain of ``MAX`` dicts (root plus ``MAX - 1`` nested shells).
+    """
     dag = Dag()
     d = {}
     cur = d
-    for _ in range(MAX_JSON_CONVERSION_DEPTH):
+    for _ in range(MAX_JSON_CONVERSION_DEPTH - 1):
         cur["k"] = {}
         cur = cur["k"]
     dag.add_node(d)

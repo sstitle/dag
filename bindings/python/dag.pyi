@@ -26,6 +26,9 @@ class DagEdgeNotFoundError(Exception):
 class DagCycleError(Exception):
     """Raised when adding an edge would create a cycle."""
 
+class DagNotAcyclicError(Exception):
+    """Raised when the graph contains a cycle and a topological order (or acyclicity check) is required."""
+
 class DagDuplicateEdgeError(Exception):
     """Raised when an edge between the given (from, to) pair already exists."""
 
@@ -156,14 +159,17 @@ class Dag:
     # Queries
 
     def ancestors(self, node: NodeId) -> list[NodeId]:
-        """Return all ancestors of *node* (nodes from which it is reachable).
+        """Return every **upstream** node: vertices `u` with a directed path `u → … → node`
+        (transitive predecessors). Same as "nodes from which *node* is reachable" along
+        incoming edges.
 
         The returned list is unordered and may differ across processes. Raises
         DagNodeNotFoundError if the node does not exist.
         """
 
     def descendants(self, node: NodeId) -> list[NodeId]:
-        """Return all descendants of *node* (nodes reachable from it).
+        """Return every **downstream** node: vertices `v` with a directed path
+        `node → … → v` (transitive successors).
 
         The returned list is unordered and may differ across processes. Raises
         DagNodeNotFoundError if the node does not exist.
@@ -180,12 +186,12 @@ class Dag:
 
         Ties are broken deterministically by NodeId value.
 
-        Raises :class:`DagCycleError` if the graph is not acyclic (including a graph
+        Raises :class:`DagNotAcyclicError` if the graph is not acyclic (including a graph
         produced by deserialisation that contains a cycle).
         """
 
     def validate_acyclic(self) -> None:
-        """Raise :class:`DagCycleError` if the graph contains a cycle (same check as ``topological_sort``)."""
+        """Raise :class:`DagNotAcyclicError` if the graph contains a cycle (same check as ``topological_sort``)."""
 
     def has_path(self, from_node: NodeId, to_node: NodeId) -> bool:
         """Return True if there is a directed path from *from_node* to *to_node*.

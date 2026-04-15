@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given, strategies as st
 from hypothesis import assume
 
-from dag import Dag, DagCycleError
+from dag import Dag, DagNotAcyclicError
 
 
 @given(st.integers(min_value=-(2**63), max_value=2**63 - 1))
@@ -61,5 +61,5 @@ def test_cyclic_fixture_deserializes_and_topological_sort_raises() -> None:
     dag = Dag.from_json(fixture.read_text())
     assert len(dag.nodes()) == 2
     assert len(dag.edges()) == 2
-    with pytest.raises(DagCycleError):
+    with pytest.raises(DagNotAcyclicError):
         dag.topological_sort()

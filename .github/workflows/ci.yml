@@ -34,6 +34,12 @@ jobs:
       - name: Run tests (all features)
         run: cargo test -p dag-core --all-features
 
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: cargo audit (dependency advisories)
+        run: cargo audit
+
       - name: Clippy (all crates)
         run: |
           cargo clippy -p dag-core --all-features --all-targets -- -D warnings

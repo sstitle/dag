@@ -22,7 +22,7 @@ Licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
 ### Core concepts
 
 - **`NodeId`** / **`EdgeId`** — opaque numeric identifiers returned by insertion methods
-- **`DagError`** — `NodeNotFound`, `EdgeNotFound`, `CycleDetected`, `DuplicateEdge`
+- **`DagError`** — `NodeNotFound`, `EdgeNotFound`, `CycleDetected` (bad edge insert), `NotAcyclic` (graph has a cycle), `DuplicateEdge`
 - **`Dag<N, E, P>`** — the graph itself (`P` is the [`CyclePolicy`](core/src/lib.rs) type
   parameter); not thread-safe without external locking
 
@@ -56,9 +56,11 @@ dag.remove_edge(e)?;   // remove edge, keep nodes
 dag.remove_node(n1)?;  // remove node and all incident edges
 ```
 
-`ancestors()` and `descendants()` return unordered `Vec<NodeId>`.
+`ancestors()` returns every **upstream** (transitive predecessor) node — vertices `u` with a path `u → … → target`. `descendants()` returns every **downstream** (transitive successor) node. Both return unordered `Vec<NodeId>` and allocate; order is also non-deterministic across processes due to hashing.
 `topological_sort()` breaks ties deterministically by `NodeId` value and returns
-`Err(DagError::NotAcyclic)` when the graph contains a cycle.
+`Err(DagError::NotAcyclic)` when the graph contains a cycle. It runs the same **O(V + E)**
+Kahn traversal as `validate_acyclic()`; if you need both a pass/fail check and the order,
+call `topological_sort()` once instead of calling both.
 
 For FFI, enable the `raw-id-access` feature on `dag-core` if you need `NodeId::from_raw` /
 `EdgeId::from_raw` (used by the Node.js binding).
@@ -86,7 +88,7 @@ dag.validate_acyclic()?; // JSON does not prove acyclicity; check untrusted payl
 ### Python
 
 ```python
-from dag import Dag, DagNodeNotFoundError, DagEdgeNotFoundError, DagCycleError
+from dag import Dag, DagNodeNotFoundError, DagEdgeNotFoundError, DagCycleError, DagNotAcyclicError
 
 dag = Dag()
 n1 = dag.add_node("fetch")
@@ -106,7 +108,7 @@ json_str = dag.to_json()
 dag2 = Dag.from_json(json_str)  # IDs are preserved
 dag2.validate_acyclic()  # optional: JSON does not prove acyclicity
 
-order = dag.topological_sort()  # raises DagCycleError if the graph is not acyclic
+order = dag.topological_sort()  # raises DagNotAcyclicError if the graph is not acyclic
 ```
 
 Integer metadata is limited to the range representable in JSON as a 64-bit signed or unsigned
@@ -143,8 +145,9 @@ dag2.validateAcyclic(); // JSON does not prove acyclicity; check untrusted paylo
 Install: `npm install @dag-rs/dag`
 
 Errors thrown by the native binding use stable message prefixes (`DAG_NODE_NOT_FOUND:`,
-`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:` (including a failed `topologicalSort` or `validateAcyclic` on a cyclic
-graph), `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`, `DAG_ID_NOT_REPRESENTABLE:`,
+`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:` (adding an edge would create a cycle),
+`DAG_NOT_ACYCLIC:` (the graph already contains a cycle — failed `topologicalSort` or `validateAcyclic`),
+`DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`, `DAG_ID_NOT_REPRESENTABLE:`,
 `DAG_JSON_TOO_LARGE:`, `DAG_JSON_PARSE:`) so you can branch without `instanceof`. The package
 also exports string constants (`DAG_ERROR_CODE_NODE_NOT_FOUND`, `DAG_ERROR_CODE_JSON_TOO_LARGE`,
 and others) for comparisons. `Dag.fromJson` rejects strings longer than

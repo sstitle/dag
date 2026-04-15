@@ -2,7 +2,7 @@
 
 from hypothesis import given, strategies as st
 
-from dag import Dag, DagCycleError
+from dag import Dag, DagDuplicateEdgeError, DagNotAcyclicError
 
 
 @given(st.integers(min_value=0, max_value=15))
@@ -30,7 +30,25 @@ def test_validate_acyclic_agrees_with_topological_sort(n_nodes):
         try:
             thunk()
             return True
-        except DagCycleError:
+        except DagNotAcyclicError:
             return False
 
     assert ok(lambda: dag.validate_acyclic()) == ok(lambda: dag.topological_sort())
+
+
+@given(st.integers(min_value=2, max_value=8), st.data())
+def test_random_forward_edges_in_random_order_stay_acyclic(n_nodes, data):
+    """Build a DAG by only adding edges that go forward in a random permutation (a random topo order)."""
+    perm = data.draw(st.permutations(range(n_nodes)))
+    dag = Dag()
+    ids = [dag.add_node(i) for i in range(n_nodes)]
+    pos = {perm[r]: r for r in range(n_nodes)}
+    for i in range(n_nodes):
+        for j in range(n_nodes):
+            if i != j and pos[i] < pos[j]:
+                try:
+                    dag.add_edge(ids[i], ids[j], None)
+                except DagDuplicateEdgeError:
+                    pass
+    dag.validate_acyclic()
+    assert len(dag.topological_sort()) == n_nodes

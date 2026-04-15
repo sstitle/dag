@@ -757,3 +757,13 @@ fn test_remove_nonexistent_node_errors() {
     // Removing again is an error.
     assert!(dag.remove_node(n2).is_err());
 }
+
+// ── Send / Sync (thread-safety surface for `N` / `E`) ─────────────────────────
+
+#[test]
+fn dag_is_send_sync_when_metadata_is_send_sync() {
+    fn assert_send<T: Send>() {}
+    fn assert_sync<T: Sync>() {}
+    assert_send::<Dag<(), ()>>();
+    assert_sync::<Dag<(), ()>>();
+}
