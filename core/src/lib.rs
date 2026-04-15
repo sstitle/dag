@@ -2,6 +2,9 @@ use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 use std::collections::{HashSet, VecDeque};
 use thiserror::Error;
 
+#[cfg(feature = "serde")]
+use serde::{Deserialize, Serialize};
+
 #[cfg(test)]
 mod tests;
 
@@ -9,10 +12,12 @@ mod tests;
 
 /// Opaque identifier for a node; newtype over u64 (encoded slotmap key).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct NodeId(pub u64);
 
 /// Opaque identifier for an edge; newtype over u64 (encoded slotmap key).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct EdgeId(pub u64);
 
 impl NodeId {
@@ -53,6 +58,7 @@ pub enum DagError {
 
 // ── Internal storage ──────────────────────────────────────────────────────────
 
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct NodeData<N> {
     meta: N,
     /// Edges leaving this node.
@@ -61,6 +67,7 @@ struct NodeData<N> {
     in_edges: Vec<EdgeId>,
 }
 
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct EdgeData<E> {
     from: NodeId,
     to: NodeId,
@@ -70,6 +77,7 @@ struct EdgeData<E> {
 // ── DAG ───────────────────────────────────────────────────────────────────────
 
 /// A directed acyclic graph generic over node metadata `N` and edge metadata `E`.
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Dag<N, E> {
     nodes: SlotMap<DefaultKey, NodeData<N>>,
     edges: SlotMap<DefaultKey, EdgeData<E>>,
@@ -186,6 +194,35 @@ impl<N, E> Dag<N, E> {
         self.edges
             .get_mut(id.key())
             .map(|e| e.meta = meta)
+            .ok_or(DagError::EdgeNotFound(id))
+    }
+
+    /// Remove a single edge by ID, cleaning up both endpoint adjacency lists.
+    pub fn remove_edge(&mut self, id: EdgeId) -> Result<(), DagError> {
+        if !self.edges.contains_key(id.key()) {
+            return Err(DagError::EdgeNotFound(id));
+        }
+        self.remove_edge_raw(id);
+        Ok(())
+    }
+
+    // ── Iteration ─────────────────────────────────────────────────────────────
+
+    /// All node IDs currently in the graph (unordered).
+    pub fn nodes(&self) -> Vec<NodeId> {
+        self.nodes.keys().map(NodeId::from).collect()
+    }
+
+    /// All edge IDs currently in the graph (unordered).
+    pub fn edges(&self) -> Vec<EdgeId> {
+        self.edges.keys().map(EdgeId::from).collect()
+    }
+
+    /// The `(from, to)` endpoint nodes of edge `id`.
+    pub fn edge_endpoints(&self, id: EdgeId) -> Result<(NodeId, NodeId), DagError> {
+        self.edges
+            .get(id.key())
+            .map(|e| (e.from, e.to))
             .ok_or(DagError::EdgeNotFound(id))
     }
 

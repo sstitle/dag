@@ -52,6 +52,35 @@ impl JsDag {
             .map_err(to_napi)
     }
 
+    /// Remove a single edge by ID, leaving its endpoint nodes intact.
+    #[napi]
+    pub fn remove_edge(&mut self, id: f64) -> Result<()> {
+        self.inner
+            .remove_edge(EdgeId(id as u64))
+            .map_err(to_napi)
+    }
+
+    /// All node IDs currently in the graph (unordered).
+    #[napi]
+    pub fn nodes(&self) -> Vec<f64> {
+        self.inner.nodes().into_iter().map(|n| n.0 as f64).collect()
+    }
+
+    /// All edge IDs currently in the graph (unordered).
+    #[napi]
+    pub fn edges(&self) -> Vec<f64> {
+        self.inner.edges().into_iter().map(|e| e.0 as f64).collect()
+    }
+
+    /// Return the `[from, to]` endpoint node IDs of edge `id`.
+    #[napi]
+    pub fn edge_endpoints(&self, id: f64) -> Result<Vec<f64>> {
+        let (from, to) = self.inner
+            .edge_endpoints(EdgeId(id as u64))
+            .map_err(to_napi)?;
+        Ok(vec![from.0 as f64, to.0 as f64])
+    }
+
     /// Return all ancestors of `id` (nodes from which it is reachable).
     #[napi]
     pub fn ancestors(&self, id: f64) -> Result<Vec<f64>> {
@@ -132,5 +161,23 @@ impl JsDag {
         self.inner
             .set_edge_meta(EdgeId(id as u64), meta)
             .map_err(to_napi)
+    }
+
+    /// Serialize the DAG to a JSON string.
+    ///
+    /// The format preserves exact node and edge IDs so a round-trip via
+    /// `Dag.fromJson` restores the same IDs.
+    #[napi]
+    pub fn to_json(&self) -> Result<String> {
+        serde_json::to_string(&self.inner)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))
+    }
+
+    /// Deserialize a DAG from a JSON string produced by `toJson`.
+    #[napi(factory)]
+    pub fn from_json(s: String) -> Result<Self> {
+        let inner: Dag<Value, Value> = serde_json::from_str(&s)
+            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        Ok(JsDag { inner })
     }
 }

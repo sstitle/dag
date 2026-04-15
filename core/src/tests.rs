@@ -331,6 +331,178 @@ fn test_has_path_disconnected() {
     assert!(!dag.has_path(a, b).unwrap());
 }
 
+// ── remove_edge ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_remove_edge_basic() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+
+    dag.remove_edge(e).unwrap();
+
+    assert!(dag.edge_meta(e).is_err());
+    assert!(dag.node_meta(a).is_ok());
+    assert!(dag.node_meta(b).is_ok());
+    assert!(!dag.has_path(a, b).unwrap());
+}
+
+#[test]
+fn test_remove_edge_nonexistent_errors() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+    dag.remove_edge(e).unwrap();
+    assert!(matches!(dag.remove_edge(e), Err(DagError::EdgeNotFound(_))));
+}
+
+#[test]
+fn test_remove_edge_cleans_up_adjacency() {
+    let (mut dag, [n1, n2, n3]) = chain();
+    // Find and remove the n1→n2 edge via edge_endpoints.
+    let e = dag
+        .edges()
+        .into_iter()
+        .find(|&eid| dag.edge_endpoints(eid).unwrap() == (n1, n2))
+        .unwrap();
+    dag.remove_edge(e).unwrap();
+
+    // n1 now has no out-edges (leaf) and no in-edges (root).
+    assert!(dag.leaves().contains(&n1));
+    assert!(dag.roots().contains(&n1));
+    // n2 is now a root (in-edge removed).
+    assert!(dag.roots().contains(&n2));
+    // n3 is still a leaf.
+    assert!(dag.leaves().contains(&n3));
+}
+
+// ── nodes / edges ─────────────────────────────────────────────────────────────
+
+#[test]
+fn test_nodes_empty() {
+    let dag: Dag<(), ()> = Dag::new();
+    assert!(dag.nodes().is_empty());
+}
+
+#[test]
+fn test_nodes_returns_all() {
+    let (dag, [n1, n2, n3]) = chain();
+    let nodes = dag.nodes();
+    assert_eq!(nodes.len(), 3);
+    assert!(nodes.contains(&n1));
+    assert!(nodes.contains(&n2));
+    assert!(nodes.contains(&n3));
+}
+
+#[test]
+fn test_nodes_after_remove() {
+    let (mut dag, [n1, n2, n3]) = chain();
+    dag.remove_node(n2).unwrap();
+    let nodes = dag.nodes();
+    assert_eq!(nodes.len(), 2);
+    assert!(nodes.contains(&n1));
+    assert!(!nodes.contains(&n2));
+    assert!(nodes.contains(&n3));
+}
+
+#[test]
+fn test_edges_empty() {
+    let dag: Dag<(), ()> = Dag::new();
+    assert!(dag.edges().is_empty());
+}
+
+#[test]
+fn test_edges_returns_all() {
+    let (dag, _) = chain();
+    assert_eq!(dag.edges().len(), 2);
+}
+
+#[test]
+fn test_edges_after_remove_edge() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+    assert_eq!(dag.edges().len(), 1);
+    dag.remove_edge(e).unwrap();
+    assert!(dag.edges().is_empty());
+}
+
+// ── edge_endpoints ────────────────────────────────────────────────────────────
+
+#[test]
+fn test_edge_endpoints() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+    assert_eq!(dag.edge_endpoints(e).unwrap(), (a, b));
+}
+
+#[test]
+fn test_edge_endpoints_nonexistent_errors() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+    dag.remove_edge(e).unwrap();
+    assert!(matches!(dag.edge_endpoints(e), Err(DagError::EdgeNotFound(_))));
+}
+
+// ── serde ─────────────────────────────────────────────────────────────────────
+
+#[cfg(feature = "serde")]
+mod serde_tests {
+    use crate::Dag;
+
+    fn chain_owned() -> (Dag<String, ()>, [crate::NodeId; 3]) {
+        let mut dag = Dag::new();
+        let n1 = dag.add_node("a".to_string());
+        let n2 = dag.add_node("b".to_string());
+        let n3 = dag.add_node("c".to_string());
+        dag.add_edge(n1, n2, ()).unwrap();
+        dag.add_edge(n2, n3, ()).unwrap();
+        (dag, [n1, n2, n3])
+    }
+
+    #[test]
+    fn test_serde_roundtrip() {
+        let (dag, [n1, n2, n3]) = chain_owned();
+        let json = serde_json::to_string(&dag).unwrap();
+        let dag2: Dag<String, ()> = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(dag2.node_meta(n1).unwrap(), "a");
+        assert_eq!(dag2.node_meta(n2).unwrap(), "b");
+        assert_eq!(dag2.node_meta(n3).unwrap(), "c");
+        assert!(dag2.has_path(n1, n3).unwrap());
+        assert!(!dag2.has_path(n3, n1).unwrap());
+    }
+
+    #[test]
+    fn test_serde_empty() {
+        let dag: Dag<(), ()> = Dag::new();
+        let json = serde_json::to_string(&dag).unwrap();
+        let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
+        assert!(dag2.nodes().is_empty());
+        assert!(dag2.edges().is_empty());
+    }
+
+    #[test]
+    fn test_serde_preserves_edge_endpoints() {
+        let mut dag: Dag<(), ()> = Dag::new();
+        let a = dag.add_node(());
+        let b = dag.add_node(());
+        let e = dag.add_edge(a, b, ()).unwrap();
+
+        let json = serde_json::to_string(&dag).unwrap();
+        let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(dag2.edge_endpoints(e).unwrap(), (a, b));
+    }
+}
+
 // ── remove_node ───────────────────────────────────────────────────────────────
 
 #[test]

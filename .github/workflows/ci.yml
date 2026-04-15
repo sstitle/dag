@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ── Rust core ──────────────────────────────────────────────────────────────
+  test-rust:
+    name: Rust core tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run tests (no features)
+        run: cargo test -p dag-core
+
+      - name: Run tests (serde feature)
+        run: cargo test -p dag-core --features serde
+
+      - name: Clippy
+        run: cargo clippy -p dag-core --features serde -- -D warnings
+
+  # ── Python binding ─────────────────────────────────────────────────────────
+  test-python:
+    name: Python binding tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-python-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install maturin and pytest
+        run: pip install maturin pytest
+
+      - name: Build and install Python binding
+        run: maturin develop --manifest-path bindings/python/Cargo.toml
+
+      - name: Run Python tests
+        run: pytest bindings/python/tests/ -v
+
+  # ── Node binding ───────────────────────────────────────────────────────────
+  test-node:
+    name: Node binding tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-node-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build Node binding
+        run: cd bindings/node && npm install && npm run build
+
+      - name: Run Node tests
+        run: cd bindings/node && npm test

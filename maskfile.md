@@ -5,10 +5,40 @@ All tasks below are available via `mask <task>` inside `nix develop`.
 
 ## test
 
-> Run the Rust core test suite
+> Run the Rust core test suite (including serde feature)
 
 ```bash
 cargo test -p dag-core
+cargo test -p dag-core --features serde
+```
+
+## test-python
+
+> Build the Python binding and run pytest
+
+```bash
+mask build-python
+.venv/bin/pip install pytest -q
+.venv/bin/pytest bindings/python/tests/ -v
+```
+
+## test-node
+
+> Build the Node binding and run the test suite
+
+```bash
+mask build-node
+cd bindings/node && npm test
+```
+
+## test-all
+
+> Run all test suites (Rust, Python, Node)
+
+```bash
+mask test
+mask test-python
+mask test-node
 ```
 
 ## test-nix

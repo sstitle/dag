@@ -7,7 +7,7 @@ Graph layout:
                          (also from ingest)
 """
 
-from dag import Dag
+from dag import Dag, DagCycleError
 
 def main():
     g = Dag()
@@ -30,7 +30,7 @@ def main():
     try:
         g.add_edge(report, ingest, {"type": "CYCLE"})
         print("ERROR: cycle was not rejected!")
-    except ValueError as exc:
+    except DagCycleError as exc:
         print(f"Cycle correctly rejected: {exc}")
 
     # Attach extra metadata to transform.

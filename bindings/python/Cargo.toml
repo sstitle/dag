@@ -7,7 +7,10 @@ edition = "2021"
 name = "dag"
 crate-type = ["cdylib"]
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("gil-refs"))'] }
+
 [dependencies]
-dag-core = { workspace = true }
+dag-core = { workspace = true, features = ["serde"] }
 serde_json = { workspace = true }
 pyo3 = { version = "0.22", features = ["extension-module"] }

@@ -78,8 +78,19 @@ fn json_to_py(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
     }
 }
 
+// ── Custom exceptions ─────────────────────────────────────────────────────────
+
+pyo3::create_exception!(dag, DagNodeNotFoundError, pyo3::exceptions::PyException);
+pyo3::create_exception!(dag, DagEdgeNotFoundError, pyo3::exceptions::PyException);
+pyo3::create_exception!(dag, DagCycleError, pyo3::exceptions::PyException);
+
 fn to_py_err(e: DagError) -> PyErr {
-    PyValueError::new_err(e.to_string())
+    let msg = e.to_string();
+    match e {
+        DagError::NodeNotFound(_) => DagNodeNotFoundError::new_err(msg),
+        DagError::EdgeNotFound(_) => DagEdgeNotFoundError::new_err(msg),
+        DagError::CycleDetected => DagCycleError::new_err(msg),
+    }
 }
 
 // ── Python-visible ID types ───────────────────────────────────────────────────
@@ -154,7 +165,7 @@ impl PyDag {
     }
 
     /// Add a directed edge `from_node → to_node`.
-    /// Raises `ValueError` if the edge would create a cycle.
+    /// Raises `DagCycleError` if the edge would create a cycle.
     pub fn add_edge(
         &mut self,
         py: Python<'_>,
@@ -166,6 +177,31 @@ impl PyDag {
         self.inner
             .add_edge(NodeId(from_node.0), NodeId(to_node.0), json_meta)
             .map(|e| PyEdgeId(e.0))
+            .map_err(to_py_err)
+    }
+
+    /// Remove a single edge by ID, leaving its endpoint nodes intact.
+    pub fn remove_edge(&mut self, edge: &PyEdgeId) -> PyResult<()> {
+        self.inner
+            .remove_edge(EdgeId(edge.0))
+            .map_err(to_py_err)
+    }
+
+    /// All node IDs currently in the graph (unordered).
+    pub fn nodes(&self) -> Vec<PyNodeId> {
+        self.inner.nodes().into_iter().map(|n| PyNodeId(n.0)).collect()
+    }
+
+    /// All edge IDs currently in the graph (unordered).
+    pub fn edges(&self) -> Vec<PyEdgeId> {
+        self.inner.edges().into_iter().map(|e| PyEdgeId(e.0)).collect()
+    }
+
+    /// The `(from, to)` endpoint nodes of an edge.
+    pub fn edge_endpoints(&self, edge: &PyEdgeId) -> PyResult<(PyNodeId, PyNodeId)> {
+        self.inner
+            .edge_endpoints(EdgeId(edge.0))
+            .map(|(f, t)| (PyNodeId(f.0), PyNodeId(t.0)))
             .map_err(to_py_err)
     }
 
@@ -248,6 +284,20 @@ impl PyDag {
             .set_edge_meta(EdgeId(edge.0), json_meta)
             .map_err(to_py_err)
     }
+
+    /// Serialize the DAG to a JSON string.
+    pub fn to_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.inner)
+            .map_err(|e| PyValueError::new_err(e.to_string()))
+    }
+
+    /// Deserialize a DAG from a JSON string.
+    #[staticmethod]
+    pub fn from_json(s: &str) -> PyResult<Self> {
+        let inner: Dag<Value, Value> = serde_json::from_str(s)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        Ok(PyDag { inner })
+    }
 }
 
 // ── Module ────────────────────────────────────────────────────────────────────
@@ -257,5 +307,8 @@ fn dag(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDag>()?;
     m.add_class::<PyNodeId>()?;
     m.add_class::<PyEdgeId>()?;
+    m.add("DagNodeNotFoundError", m.py().get_type_bound::<DagNodeNotFoundError>())?;
+    m.add("DagEdgeNotFoundError", m.py().get_type_bound::<DagEdgeNotFoundError>())?;
+    m.add("DagCycleError", m.py().get_type_bound::<DagCycleError>())?;
     Ok(())
 }

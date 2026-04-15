@@ -26,6 +26,14 @@ export declare class Dag {
    * Throws if the edge would create a cycle.
    */
   addEdge(from: number, to: number, meta: any): number
+  /** Remove a single edge by ID, leaving its endpoint nodes intact. */
+  removeEdge(id: number): void
+  /** All node IDs currently in the graph (unordered). */
+  nodes(): Array<number>
+  /** All edge IDs currently in the graph (unordered). */
+  edges(): Array<number>
+  /** Return the `[from, to]` endpoint node IDs of edge `id`. */
+  edgeEndpoints(id: number): Array<number>
   /** Return all ancestors of `id` (nodes from which it is reachable). */
   ancestors(id: number): Array<number>
   /** Return all descendants of `id` (nodes reachable from it). */
@@ -46,4 +54,13 @@ export declare class Dag {
   edgeMeta(id: number): any
   /** Replace the metadata of edge `id`. */
   setEdgeMeta(id: number, meta: any): void
+  /**
+   * Serialize the DAG to a JSON string.
+   *
+   * The format preserves exact node and edge IDs so a round-trip via
+   * `Dag.fromJson` restores the same IDs.
+   */
+  toJson(): string
+  /** Deserialize a DAG from a JSON string produced by `toJson`. */
+  static fromJson(s: string): JsDag
 }
