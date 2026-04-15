@@ -473,6 +473,28 @@ fn test_nodes_returns_all() {
 }
 
 #[test]
+fn test_iter_nodes_matches_nodes() {
+    let (dag, [n1, n2, n3]) = chain();
+    let mut a: Vec<_> = dag.iter_nodes().collect();
+    let mut b = dag.nodes();
+    a.sort();
+    b.sort();
+    assert_eq!(a, b);
+    assert!(a.contains(&n1) && a.contains(&n2) && a.contains(&n3));
+}
+
+#[test]
+fn test_iter_edges_matches_edges() {
+    let (dag, _) = chain();
+    let mut a: Vec<_> = dag.iter_edges().collect();
+    let mut b = dag.edges();
+    a.sort();
+    b.sort();
+    assert_eq!(a, b);
+    assert_eq!(a.len(), 2);
+}
+
+#[test]
 fn test_nodes_after_remove() {
     let (mut dag, [n1, n2, n3]) = chain();
     dag.remove_node(n2).unwrap();
@@ -534,7 +556,7 @@ fn test_edge_endpoints_nonexistent_errors() {
 
 #[cfg(feature = "serde")]
 mod serde_tests {
-    use crate::{Dag, DagError};
+    use crate::{DEFAULT_MAX_DAG_JSON_BYTES, Dag, DagError, parse_dag_from_json_str};
 
     fn chain_owned() -> (Dag<String, ()>, [crate::NodeId; 3]) {
         let mut dag = Dag::new();
@@ -547,10 +569,18 @@ mod serde_tests {
     }
 
     #[test]
+    fn test_parse_dag_json_too_large() {
+        let s = "x".repeat(100);
+        let r = parse_dag_from_json_str::<(), (), crate::CheckCycles>(&s, 10);
+        assert!(matches!(r, Err(crate::DagJsonError::TooLarge { .. })));
+    }
+
+    #[test]
     fn test_serde_roundtrip() {
         let (dag, [n1, n2, n3]) = chain_owned();
         let json = serde_json::to_string(&dag).unwrap();
-        let dag2: Dag<String, ()> = serde_json::from_str(&json).unwrap();
+        let dag2: Dag<String, ()> =
+            parse_dag_from_json_str(&json, DEFAULT_MAX_DAG_JSON_BYTES).unwrap();
 
         assert_eq!(dag2.node_meta(n1).unwrap(), "a");
         assert_eq!(dag2.node_meta(n2).unwrap(), "b");
@@ -563,7 +593,7 @@ mod serde_tests {
     fn test_serde_empty() {
         let dag: Dag<(), ()> = Dag::new();
         let json = serde_json::to_string(&dag).unwrap();
-        let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
+        let dag2: Dag<(), ()> = parse_dag_from_json_str(&json, DEFAULT_MAX_DAG_JSON_BYTES).unwrap();
         assert!(dag2.nodes().is_empty());
         assert!(dag2.edges().is_empty());
     }
@@ -576,7 +606,7 @@ mod serde_tests {
         let e = dag.add_edge(a, b, ()).unwrap();
 
         let json = serde_json::to_string(&dag).unwrap();
-        let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
+        let dag2: Dag<(), ()> = parse_dag_from_json_str(&json, DEFAULT_MAX_DAG_JSON_BYTES).unwrap();
 
         assert_eq!(dag2.edge_endpoints(e).unwrap(), (a, b));
     }
@@ -590,7 +620,7 @@ mod serde_tests {
         dag.add_edge(a, b, ()).unwrap();
         dag.add_edge(b, a, ()).unwrap();
         let json = serde_json::to_string(&dag).unwrap();
-        let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
+        let dag2: Dag<(), ()> = parse_dag_from_json_str(&json, DEFAULT_MAX_DAG_JSON_BYTES).unwrap();
         assert!(matches!(dag2.topological_sort(), Err(DagError::NotAcyclic)));
     }
 }

@@ -6,7 +6,10 @@ str, list, or dict with string keys).  Non-finite floats (NaN, ±Inf) are not
 valid JSON and will raise ``ValueError``.
 """
 
-from typing import Any, Tuple
+from typing import Any, Optional, Tuple
+
+# Default maximum JSON string length for :meth:`Dag.from_json` (256 MiB).
+DEFAULT_MAX_DAG_JSON_BYTES: int
 
 # ── Exceptions ────────────────────────────────────────────────────────────────
 
@@ -187,9 +190,12 @@ class Dag:
         """
 
     @staticmethod
-    def from_json(s: str) -> "Dag":
+    def from_json(s: str, max_bytes: Optional[int] = None) -> "Dag":
         """Deserialise a DAG from a JSON string produced by :meth:`to_json`.
 
-        Raises ValueError if *s* is not valid JSON or does not match the
-        expected schema.
+        By default, rejects *s* longer than ``DEFAULT_MAX_DAG_JSON_BYTES`` before
+        parsing. Pass *max_bytes* to override (for example in tests).
+
+        Raises ValueError if *s* is too large, not valid JSON, or does not match
+        the expected schema.
         """

@@ -1,4 +1,7 @@
-use dag_core::{Dag, DagError, EdgeId, NodeId};
+use dag_core::{
+    DEFAULT_MAX_DAG_JSON_BYTES, Dag, DagError, DagJsonError, EdgeId, NodeId,
+    parse_dag_from_json_str,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyFloat, PyList, PyString};
@@ -126,6 +129,10 @@ fn to_py_err(e: DagError) -> PyErr {
     }
 }
 
+fn json_err_to_py(e: DagJsonError) -> PyErr {
+    PyValueError::new_err(e.to_string())
+}
+
 // ── Python-visible ID types ───────────────────────────────────────────────────
 
 /// Stores the Rust `NodeId` directly to avoid raw-u64 round-trips.
@@ -241,6 +248,8 @@ impl PyDag {
     }
 
     /// All ancestors of `node` (nodes from which it is reachable).
+    ///
+    /// The returned list is **unordered**; do not rely on BFS/DFS ordering.
     pub fn ancestors(&self, node: &PyNodeId) -> PyResult<Vec<PyNodeId>> {
         self.inner
             .ancestors(node.0)
@@ -249,6 +258,8 @@ impl PyDag {
     }
 
     /// All descendants of `node` (nodes reachable from it).
+    ///
+    /// The returned list is **unordered**; do not rely on BFS/DFS ordering.
     pub fn descendants(&self, node: &PyNodeId) -> PyResult<Vec<PyNodeId>> {
         self.inner
             .descendants(node.0)
@@ -327,10 +338,15 @@ impl PyDag {
     }
 
     /// Deserialize a DAG from a JSON string.
+    ///
+    /// By default, rejects inputs longer than the module constant
+    /// `DEFAULT_MAX_DAG_JSON_BYTES` before parsing. Pass *max_bytes* to override
+    /// (for example in tests).
     #[staticmethod]
-    pub fn from_json(s: &str) -> PyResult<Self> {
-        let inner: Dag<Value, Value> =
-            serde_json::from_str(s).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    #[pyo3(signature = (s, max_bytes=None))]
+    pub fn from_json(s: &str, max_bytes: Option<usize>) -> PyResult<Self> {
+        let max = max_bytes.unwrap_or(DEFAULT_MAX_DAG_JSON_BYTES);
+        let inner: Dag<Value, Value> = parse_dag_from_json_str(s, max).map_err(json_err_to_py)?;
         Ok(PyDag { inner })
     }
 }
@@ -339,6 +355,7 @@ impl PyDag {
 
 #[pymodule]
 fn dag(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add("DEFAULT_MAX_DAG_JSON_BYTES", DEFAULT_MAX_DAG_JSON_BYTES)?;
     m.add_class::<PyDag>()?;
     m.add_class::<PyNodeId>()?;
     m.add_class::<PyEdgeId>()?;

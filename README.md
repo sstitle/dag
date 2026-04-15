@@ -29,9 +29,12 @@ Licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
 #### Performance (Rust)
 
 - With the default cycle policy, each `add_edge` runs a reachability scan (**O(V + E)** in the
-  worst case) plus a duplicate-edge check (**O(out-degree(from))**).
-- `nodes()` and `edges()` allocate a new `Vec` on each call; avoid calling them in tight loops
-  on very large graphs unless you need a snapshot of all IDs.
+  worst case) plus a duplicate-edge check (**O(out-degree(from))**). For bulk-loading edges you
+  already know are acyclic, use `Dag<N, E, SkipCycleCheck>` and only call
+  [`topological_sort`](core/src/lib.rs) (or another validation pass) once at the end.
+- Prefer [`iter_nodes`](core/src/lib.rs) / [`iter_edges`](core/src/lib.rs) when you only need to
+  scan IDs; [`nodes`](core/src/lib.rs) / [`edges`](core/src/lib.rs) collect into a new \[`Vec`\]
+  each time.
 
 ### Rust
 
@@ -68,6 +71,17 @@ Enable the `serde` feature to derive `Serialize`/`Deserialize` for `Dag<N, E, P>
 dag-core = { version = "0.1", features = ["serde"] }
 ```
 
+Use [`parse_dag_from_json_str`](core/src/lib.rs) with [`DEFAULT_MAX_DAG_JSON_BYTES`](core/src/lib.rs)
+to deserialise from a string while rejecting oversized input before parsing (important for
+untrusted JSON):
+
+```rust
+use dag_core::{parse_dag_from_json_str, Dag, DEFAULT_MAX_DAG_JSON_BYTES};
+
+let dag: Dag<String, ()> =
+    parse_dag_from_json_str(json_str, DEFAULT_MAX_DAG_JSON_BYTES)?;
+```
+
 ### Python
 
 ```python
@@ -96,6 +110,9 @@ order = dag.topological_sort()  # raises DagCycleError if the graph is not acycl
 Integer metadata is limited to the range representable in JSON as a 64-bit signed or unsigned
 integer (roughly `i64` / `u64`); larger Python integers raise `ValueError`.
 
+`Dag.from_json` rejects strings longer than `DEFAULT_MAX_DAG_JSON_BYTES` (256 MiB) before
+parsing; pass `max_bytes=` to override (for example in tests).
+
 Install: `pip install dag` (after building with `maturin`)
 
 Run tests: `mask test`
@@ -121,11 +138,15 @@ Install: `npm install @dag-rs/dag`
 
 Errors thrown by the native binding use stable message prefixes (`DAG_NODE_NOT_FOUND:`,
 `DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:` (including a failed `topologicalSort` on a cyclic
-graph), `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`, `DAG_ID_NOT_REPRESENTABLE:`) so you
-can branch without `instanceof`. Node and edge IDs must be **non-negative integers** within
-JavaScript’s safe integer range (`Number.MIN_SAFE_INTEGER` … `Number.MAX_SAFE_INTEGER`) when
-passed into methods. Methods that return node or edge IDs throw `DAG_ID_NOT_REPRESENTABLE`
-if an ID cannot be represented as a JavaScript safe integer.
+graph), `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`, `DAG_ID_NOT_REPRESENTABLE:`,
+`DAG_JSON_TOO_LARGE:`, `DAG_JSON_PARSE:`) so you can branch without `instanceof`. The package
+also exports string constants (`DAG_ERROR_CODE_NODE_NOT_FOUND`, `DAG_ERROR_CODE_JSON_TOO_LARGE`,
+and others) for comparisons. `Dag.fromJson` rejects strings longer than
+`defaultMaxDagJsonBytes()` before parsing; pass an optional second argument to override (for
+example in tests). Node and edge IDs must be **non-negative integers** within JavaScript’s
+safe integer range (`Number.MIN_SAFE_INTEGER` … `Number.MAX_SAFE_INTEGER`) when passed into
+methods. Methods that return node or edge IDs throw `DAG_ID_NOT_REPRESENTABLE` if an ID cannot
+be represented as a JavaScript safe integer.
 
 ## Development
 
@@ -139,19 +160,21 @@ if an ID cannot be represented as a JavaScript safe integer.
 ```bash
 direnv allow        # or: nix develop
 mask build          # Python + Node bindings
-mask test           # Rust, Python, Node, and nix-unit
+mask test           # Rust, Python, and Node
 ```
 
 ### Available tasks
 
 ```
-mask format   # treefmt (nix fmt)
+mask format   # treefmt (nix fmt) — authoritative for Nix, Markdown, Rust, …
 mask build    # Python .venv + maturin, Node npm build
-mask test     # cargo, pytest, npm test, nix-unit
+mask test     # cargo, pytest, npm test
 mask run      # example scripts (Python + Node)
 ```
 
-`nix flake check` (run in CI) verifies treefmt formatting via the flake `checks` output.
+`nix flake check` (run in CI) verifies treefmt formatting via the flake `checks` output. The
+Rust CI job also runs `cargo fmt`; if anything disagrees, **treefmt** (`mask format`) is the
+source of truth for the repo.
 
 ## Project structure
 

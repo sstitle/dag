@@ -1,6 +1,9 @@
 #![deny(clippy::all)]
 
-use dag_core::{Dag, DagError, EdgeId, NodeId};
+use dag_core::{
+    DEFAULT_MAX_DAG_JSON_BYTES, Dag, DagError, DagJsonError, EdgeId, NodeId,
+    parse_dag_from_json_str,
+};
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use serde_json::Value;
@@ -49,6 +52,18 @@ fn edge_id_from_f64(id: f64, label: &str) -> std::result::Result<EdgeId, napi::E
 
 /// Maps [`DagError`] to [`napi::Error`] with stable `DAG_*` message prefixes so
 /// callers can distinguish cases without custom exception classes.
+fn dag_json_err_to_napi(e: DagJsonError) -> napi::Error {
+    match e {
+        DagJsonError::TooLarge { len, max } => napi::Error::new(
+            napi::Status::InvalidArg,
+            format!("DAG_JSON_TOO_LARGE: JSON exceeds maximum size ({len} bytes, max {max} bytes)"),
+        ),
+        DagJsonError::Serde(e) => {
+            napi::Error::new(napi::Status::InvalidArg, format!("DAG_JSON_PARSE: {e}"))
+        }
+    }
+}
+
 fn dag_error_to_napi(e: DagError) -> napi::Error {
     match e {
         DagError::NodeNotFound(_) => {
@@ -97,6 +112,38 @@ fn try_edge_id_to_f64(id: EdgeId) -> std::result::Result<f64, napi::Error> {
         ));
     }
     Ok(raw as f64)
+}
+
+/// Stable prefix for `DAG_NODE_NOT_FOUND` errors (use with `String.prototype.startsWith` or
+/// `includes`, or compare to [`DAG_ERROR_CODE_NODE_NOT_FOUND`]).
+#[napi]
+pub const DAG_ERROR_CODE_NODE_NOT_FOUND: &'static str = "DAG_NODE_NOT_FOUND";
+
+#[napi]
+pub const DAG_ERROR_CODE_EDGE_NOT_FOUND: &'static str = "DAG_EDGE_NOT_FOUND";
+
+#[napi]
+pub const DAG_ERROR_CODE_CYCLE: &'static str = "DAG_CYCLE_DETECTED";
+
+#[napi]
+pub const DAG_ERROR_CODE_DUPLICATE_EDGE: &'static str = "DAG_DUPLICATE_EDGE";
+
+#[napi]
+pub const DAG_ERROR_CODE_INVALID_ID: &'static str = "DAG_INVALID_ID";
+
+#[napi]
+pub const DAG_ERROR_CODE_ID_NOT_REPRESENTABLE: &'static str = "DAG_ID_NOT_REPRESENTABLE";
+
+#[napi]
+pub const DAG_ERROR_CODE_JSON_TOO_LARGE: &'static str = "DAG_JSON_TOO_LARGE";
+
+#[napi]
+pub const DAG_ERROR_CODE_JSON_PARSE: &'static str = "DAG_JSON_PARSE";
+
+/// Default maximum JSON string length accepted by [`JsDag::from_json`] (256 MiB).
+#[napi]
+pub fn default_max_dag_json_bytes() -> u32 {
+    DEFAULT_MAX_DAG_JSON_BYTES.min(u32::MAX as usize) as u32
 }
 
 /// Directed acyclic graph with arbitrary JSON metadata on nodes and edges.
@@ -158,21 +205,13 @@ impl JsDag {
     /// All node IDs currently in the graph (unordered).
     #[napi]
     pub fn nodes(&self) -> Result<Vec<f64>> {
-        self.inner
-            .nodes()
-            .into_iter()
-            .map(try_node_id_to_f64)
-            .collect()
+        self.inner.iter_nodes().map(try_node_id_to_f64).collect()
     }
 
     /// All edge IDs currently in the graph (unordered).
     #[napi]
     pub fn edges(&self) -> Result<Vec<f64>> {
-        self.inner
-            .edges()
-            .into_iter()
-            .map(try_edge_id_to_f64)
-            .collect()
+        self.inner.iter_edges().map(try_edge_id_to_f64).collect()
     }
 
     /// Return the `[from, to]` endpoint node IDs of edge `id`.
@@ -186,6 +225,8 @@ impl JsDag {
     }
 
     /// Return all ancestors of `id` (nodes from which it is reachable).
+    ///
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
     #[napi]
     pub fn ancestors(&self, id: f64) -> Result<Vec<f64>> {
         let ids = self
@@ -196,6 +237,8 @@ impl JsDag {
     }
 
     /// Return all descendants of `id` (nodes reachable from it).
+    ///
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
     #[napi]
     pub fn descendants(&self, id: f64) -> Result<Vec<f64>> {
         let ids = self
@@ -284,10 +327,16 @@ impl JsDag {
     }
 
     /// Deserialize a DAG from a JSON string produced by `toJson`.
+    ///
+    /// By default, rejects strings longer than `defaultMaxDagJsonBytes()` before parsing.
+    /// Pass optional `maxBytes` to override (for example in tests).
     #[napi(factory)]
-    pub fn from_json(s: String) -> Result<Self> {
+    pub fn from_json(s: String, max_bytes: Option<u32>) -> Result<Self> {
+        let max = max_bytes
+            .map(|u| u as usize)
+            .unwrap_or(DEFAULT_MAX_DAG_JSON_BYTES);
         let inner: Dag<Value, Value> =
-            serde_json::from_str(&s).map_err(|e| napi::Error::from_reason(e.to_string()))?;
+            parse_dag_from_json_str(&s, max).map_err(dag_json_err_to_napi)?;
         Ok(JsDag { inner })
     }
 }

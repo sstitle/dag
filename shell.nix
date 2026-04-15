@@ -6,7 +6,6 @@ pkgs.mkShell {
     git
     mask
     maturin
-    nix-unit
     nodejs_22
     python3
     rustc

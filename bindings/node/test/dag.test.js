@@ -311,3 +311,10 @@ test('fromJson preserves edge endpoints', () => {
 test('fromJson invalid throws', () => {
   assert.throws(() => Dag.fromJson('not valid json'));
 });
+
+test('fromJson rejects oversized string when maxBytes is small', () => {
+  assert.throws(
+    () => Dag.fromJson('x'.repeat(100), 10),
+    /DAG_JSON_TOO_LARGE/,
+  );
+});

@@ -24,12 +24,12 @@ one-off scripts). In those cases, note why tests were skipped.
 
 Use the unit testing framework appropriate for the language.
 
-- **Nix** — `nix-unit` test attributes must be prefixed with
-  `test` (e.g. `testMyFunction`). See https://github.com/nix-community/nix-unit
-- **Python** - `pytest`
+- **Python** — `pytest`
 
 Run tests with:
 
 ```
 mask test
 ```
+
+Formatting for the whole repository (Nix, Markdown, Rust, and more) is enforced by **treefmt** via `nix flake check` or `mask format` (`nix fmt`). The Rust CI job also runs `cargo fmt`; if they disagree, **treefmt wins** — run `mask format` before pushing.

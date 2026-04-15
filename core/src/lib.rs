@@ -105,6 +105,42 @@ pub enum DagError {
     NotAcyclic,
 }
 
+/// Default maximum JSON string length accepted by [`parse_dag_from_json_str`]
+/// (256 MiB). Intended as a guardrail when deserialising untrusted input.
+#[cfg(feature = "serde")]
+pub const DEFAULT_MAX_DAG_JSON_BYTES: usize = 256 * 1024 * 1024;
+
+/// Failure when deserialising a [`Dag`] from JSON.
+#[cfg(feature = "serde")]
+#[derive(Debug, Error)]
+pub enum DagJsonError {
+    #[error("JSON exceeds maximum size ({len} bytes, max {max} bytes)")]
+    TooLarge { len: usize, max: usize },
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+}
+
+/// Deserialise a [`Dag`] from a JSON string, rejecting inputs larger than
+/// `max_bytes` before parsing.
+#[cfg(feature = "serde")]
+pub fn parse_dag_from_json_str<N, E, P>(
+    s: &str,
+    max_bytes: usize,
+) -> Result<Dag<N, E, P>, DagJsonError>
+where
+    N: for<'de> serde::Deserialize<'de>,
+    E: for<'de> serde::Deserialize<'de>,
+    P: CyclePolicy,
+{
+    if s.len() > max_bytes {
+        return Err(DagJsonError::TooLarge {
+            len: s.len(),
+            max: max_bytes,
+        });
+    }
+    serde_json::from_str(s).map_err(DagJsonError::from)
+}
+
 // ── Cycle policy — dependency-injection hook ──────────────────────────────────
 
 /// Controls whether [`Dag::add_edge`] validates acyclicity.
@@ -359,14 +395,26 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
 
     // ── Iteration ─────────────────────────────────────────────────────────────
 
+    /// Iterator over all node IDs (unordered). Prefer this over [`Dag::nodes`]
+    /// when you only need to scan without allocating a [`Vec`].
+    pub fn iter_nodes(&self) -> impl Iterator<Item = NodeId> + '_ {
+        self.nodes.keys().map(NodeId::from)
+    }
+
+    /// Iterator over all edge IDs (unordered). Prefer this over [`Dag::edges`]
+    /// when you only need to scan without allocating a [`Vec`].
+    pub fn iter_edges(&self) -> impl Iterator<Item = EdgeId> + '_ {
+        self.edges.keys().map(EdgeId::from)
+    }
+
     /// All node IDs currently in the graph (unordered).
     pub fn nodes(&self) -> Vec<NodeId> {
-        self.nodes.keys().map(NodeId::from).collect()
+        self.iter_nodes().collect()
     }
 
     /// All edge IDs currently in the graph (unordered).
     pub fn edges(&self) -> Vec<EdgeId> {
-        self.edges.keys().map(EdgeId::from).collect()
+        self.iter_edges().collect()
     }
 
     /// The `(from, to)` endpoint nodes of edge `id`.
@@ -380,6 +428,8 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
     // ── Graph queries ─────────────────────────────────────────────────────────
 
     /// All ancestors of `id` (nodes from which `id` is reachable).
+    ///
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
     pub fn ancestors(&self, id: NodeId) -> Result<Vec<NodeId>, DagError> {
         if !self.nodes.contains_key(id.key()) {
             return Err(DagError::NodeNotFound(id));
@@ -400,6 +450,8 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
     }
 
     /// All descendants of `id` (nodes reachable from `id`).
+    ///
+    /// **Order is unspecified** — do not rely on BFS/DFS ordering.
     pub fn descendants(&self, id: NodeId) -> Result<Vec<NodeId>, DagError> {
         if !self.nodes.contains_key(id.key()) {
             return Err(DagError::NodeNotFound(id));
@@ -470,7 +522,9 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             let mut newly_zero: Vec<NodeId> = Vec::new();
             for eid in &self.nodes[node.key()].out_edges {
                 let child = self.edges[eid.key()].to;
-                let deg = in_degree.get_mut(&child).unwrap();
+                let deg = in_degree
+                    .get_mut(&child)
+                    .expect("in_degree keys mirror the node set; child must exist");
                 *deg -= 1;
                 if *deg == 0 {
                     newly_zero.push(child);

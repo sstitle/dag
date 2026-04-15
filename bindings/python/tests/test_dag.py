@@ -425,3 +425,8 @@ def test_from_json_preserves_edge_endpoints():
 def test_from_json_invalid_raises():
     with pytest.raises(Exception):
         Dag.from_json("not valid json")
+
+
+def test_from_json_rejects_oversized_string():
+    with pytest.raises(ValueError, match="maximum size"):
+        Dag.from_json("x" * 100, max_bytes=10)

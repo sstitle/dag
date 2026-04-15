@@ -25,7 +25,7 @@ VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo
 
 ## test
 
-> Rust (`dag-core` + `serde`), Python (pytest), Node (`npm test`), and `nix-unit` on `test.nix`
+> Rust (`dag-core` + `serde`), Python (pytest), and Node (`npm test`)
 
 ```bash
 set -e
@@ -37,7 +37,6 @@ VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo
 .venv/bin/pip install pytest hypothesis -q
 .venv/bin/pytest bindings/python/tests/ -v
 ( cd bindings/node && npm install && npm run build && npm test )
-nix-unit ./test.nix
 ```
 
 ## run

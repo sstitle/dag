@@ -2,6 +2,7 @@ result*
 .direnv/
 scratchpad.md
 __pycache__/
+.pytest_cache/
 *.egg-info/
 .venv/
 target/
