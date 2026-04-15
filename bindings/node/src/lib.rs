@@ -202,10 +202,24 @@ impl JsDag {
             .map_err(dag_error_to_napi)
     }
 
+    /// Returns `true` if `id` refers to a node currently in the graph.
+    #[napi]
+    pub fn has_node(&self, id: f64) -> Result<bool> {
+        let nid = node_id_from_f64(id, "node id")?;
+        Ok(self.inner.has_node(nid))
+    }
+
     /// All node IDs currently in the graph (unordered).
     #[napi]
     pub fn nodes(&self) -> Result<Vec<f64>> {
         self.inner.iter_nodes().map(try_node_id_to_f64).collect()
+    }
+
+    /// Returns `true` if `id` refers to an edge currently in the graph.
+    #[napi]
+    pub fn has_edge(&self, id: f64) -> Result<bool> {
+        let eid = edge_id_from_f64(id, "edge id")?;
+        Ok(self.inner.has_edge(eid))
     }
 
     /// All edge IDs currently in the graph (unordered).

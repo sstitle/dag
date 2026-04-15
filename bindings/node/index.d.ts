@@ -43,8 +43,12 @@ export declare class Dag {
   addEdge(from: number, to: number, meta: any): number
   /** Remove a single edge by ID, leaving its endpoint nodes intact. */
   removeEdge(id: number): void
+  /** Returns `true` if `id` refers to a node currently in the graph. */
+  hasNode(id: number): boolean
   /** All node IDs currently in the graph (unordered). */
   nodes(): Array<number>
+  /** Returns `true` if `id` refers to an edge currently in the graph. */
+  hasEdge(id: number): boolean
   /** All edge IDs currently in the graph (unordered). */
   edges(): Array<number>
   /** Return the `[from, to]` endpoint node IDs of edge `id`. */

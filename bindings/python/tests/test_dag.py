@@ -119,6 +119,24 @@ def test_node_id_le_ge():
     assert n1 >= n1
 
 
+def test_has_node():
+    dag = Dag()
+    n = dag.add_node(None)
+    assert dag.has_node(n)
+    dag.remove_node(n)
+    assert not dag.has_node(n)
+
+
+def test_has_edge():
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    e = dag.add_edge(n1, n2, None)
+    assert dag.has_edge(e)
+    dag.remove_edge(e)
+    assert not dag.has_edge(e)
+
+
 # ── exception types ───────────────────────────────────────────────────────────
 
 def test_node_not_found_raises_correct_exception():

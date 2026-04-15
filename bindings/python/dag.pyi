@@ -108,6 +108,9 @@ class Dag:
     def nodes(self) -> list[NodeId]:
         """Return all node IDs currently in the graph (unordered)."""
 
+    def has_node(self, node: NodeId) -> bool:
+        """Return True if *node* is currently in the graph."""
+
     # Edges
 
     def add_edge(self, from_node: NodeId, to_node: NodeId, meta: Any) -> EdgeId:
@@ -146,6 +149,9 @@ class Dag:
 
     def edges(self) -> list[EdgeId]:
         """Return all edge IDs currently in the graph (unordered)."""
+
+    def has_edge(self, edge: EdgeId) -> bool:
+        """Return True if *edge* is currently in the graph."""
 
     # Queries
 

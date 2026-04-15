@@ -52,6 +52,24 @@ test('setEdgeMeta', () => {
 
 // ── error cases ───────────────────────────────────────────────────────────────
 
+test('hasNode', () => {
+  const dag = new Dag();
+  const n = dag.addNode(null);
+  assert.equal(dag.hasNode(n), true);
+  dag.removeNode(n);
+  assert.equal(dag.hasNode(n), false);
+});
+
+test('hasEdge', () => {
+  const dag = new Dag();
+  const n1 = dag.addNode(null);
+  const n2 = dag.addNode(null);
+  const e = dag.addEdge(n1, n2, null);
+  assert.equal(dag.hasEdge(e), true);
+  dag.removeEdge(e);
+  assert.equal(dag.hasEdge(e), false);
+});
+
 test('nodeNotFound throws', () => {
   const dag = new Dag();
   const n = dag.addNode(null);

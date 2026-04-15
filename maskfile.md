@@ -25,12 +25,11 @@ VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo
 
 ## test
 
-> Rust (`dag-core` + `serde`), Python (pytest), and Node (`npm test`)
+> Rust (`dag-core` with `--all-features`, including `serde` and `raw-id-access`), Python (pytest + hypothesis), and Node (`npm test`)
 
 ```bash
 set -e
-cargo test -p dag-core
-cargo test -p dag-core --features serde
+cargo test -p dag-core --all-features
 rm -rf .venv
 python3 -m venv .venv
 VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo.toml

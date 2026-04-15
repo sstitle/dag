@@ -31,15 +31,12 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check
 
-      - name: Run tests (no features)
-        run: cargo test -p dag-core
-
-      - name: Run tests (serde feature)
-        run: cargo test -p dag-core --features serde
+      - name: Run tests (all features)
+        run: cargo test -p dag-core --all-features
 
       - name: Clippy (all crates)
         run: |
-          cargo clippy -p dag-core --features serde --all-targets -- -D warnings
+          cargo clippy -p dag-core --all-features --all-targets -- -D warnings
           cargo clippy -p dag-python --all-targets -- -D warnings
           cargo clippy -p dag-node --all-targets -- -D warnings
 

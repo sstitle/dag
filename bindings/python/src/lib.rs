@@ -269,9 +269,19 @@ impl PyDag {
         self.inner.remove_edge(edge.0).map_err(to_py_err)
     }
 
+    /// Returns `true` if `node` is currently in the graph.
+    pub fn has_node(&self, node: &PyNodeId) -> bool {
+        self.inner.has_node(node.0)
+    }
+
     /// All node IDs currently in the graph (unordered).
     pub fn nodes(&self) -> Vec<PyNodeId> {
         self.inner.nodes().into_iter().map(PyNodeId).collect()
+    }
+
+    /// Returns `true` if `edge` is currently in the graph.
+    pub fn has_edge(&self, edge: &PyEdgeId) -> bool {
+        self.inner.has_edge(edge.0)
     }
 
     /// All edge IDs currently in the graph (unordered).

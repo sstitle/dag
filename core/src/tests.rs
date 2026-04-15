@@ -86,6 +86,50 @@ fn test_node_not_found_error() {
     assert!(matches!(dag.node_meta(x), Err(DagError::NodeNotFound(_))));
 }
 
+#[test]
+fn test_has_node() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let n = dag.add_node(());
+    assert!(dag.has_node(n));
+    dag.remove_node(n).unwrap();
+    assert!(!dag.has_node(n));
+}
+
+#[test]
+fn test_has_edge() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+    assert!(dag.has_edge(e));
+    dag.remove_edge(e).unwrap();
+    assert!(!dag.has_edge(e));
+}
+
+#[cfg(feature = "raw-id-access")]
+#[test]
+fn test_has_node_false_for_stale_from_raw() {
+    use crate::NodeId;
+    let mut dag: Dag<(), ()> = Dag::new();
+    let n = dag.add_node(());
+    let raw = n.raw();
+    dag.remove_node(n).unwrap();
+    assert!(!dag.has_node(NodeId::from_raw(raw)));
+}
+
+#[cfg(feature = "raw-id-access")]
+#[test]
+fn test_has_edge_false_for_stale_from_raw() {
+    use crate::EdgeId;
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let e = dag.add_edge(a, b, ()).unwrap();
+    let raw = e.raw();
+    dag.remove_edge(e).unwrap();
+    assert!(!dag.has_edge(EdgeId::from_raw(raw)));
+}
+
 // ── cycle rejection ────────────────────────────────────────────────────────────
 
 #[test]
@@ -298,6 +342,40 @@ fn test_validate_acyclic_cycle_fails() {
     dag.add_edge(a, b, ()).unwrap();
     dag.add_edge(b, a, ()).unwrap();
     assert!(matches!(dag.validate_acyclic(), Err(DagError::NotAcyclic)));
+}
+
+/// `validate_acyclic` must agree with `topological_sort` on whether the graph is acyclic.
+#[test]
+fn test_validate_acyclic_matches_topological_sort_cyclicity() {
+    fn assert_same_cyclicity<N, E, P: crate::CyclePolicy>(dag: &crate::Dag<N, E, P>) {
+        assert_eq!(
+            dag.validate_acyclic().is_ok(),
+            dag.topological_sort().is_ok(),
+            "validate_acyclic and topological_sort must agree on acyclicity"
+        );
+    }
+
+    let dag: Dag<(), ()> = Dag::new();
+    assert_same_cyclicity(&dag);
+
+    let (dag, _) = chain();
+    assert_same_cyclicity(&dag);
+
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    let c = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    dag.add_edge(a, c, ()).unwrap();
+    assert_same_cyclicity(&dag);
+
+    use crate::SkipCycleCheck;
+    let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    dag.add_edge(b, a, ()).unwrap();
+    assert_same_cyclicity(&dag);
 }
 
 #[test]

@@ -447,6 +447,20 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             .ok_or(DagError::EdgeNotFound(id))
     }
 
+    /// Returns `true` if `id` refers to a node currently in the graph.
+    ///
+    /// Useful after [`NodeId::from_raw`] (FFI) to check that an ID is still live.
+    pub fn has_node(&self, id: NodeId) -> bool {
+        self.nodes.contains_key(id.key())
+    }
+
+    /// Returns `true` if `id` refers to an edge currently in the graph.
+    ///
+    /// Useful after [`EdgeId::from_raw`] (FFI) to check that an ID is still live.
+    pub fn has_edge(&self, id: EdgeId) -> bool {
+        self.edges.contains_key(id.key())
+    }
+
     // ── Graph queries ─────────────────────────────────────────────────────────
 
     /// All ancestors of `id` (nodes from which `id` is reachable).
@@ -524,6 +538,41 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
     /// after using [`SkipCycleCheck`], or if a cyclic graph was deserialized from
     /// JSON while using the default [`CheckCycles`] policy for inserts).
     pub fn topological_sort(&self) -> Result<Vec<NodeId>, DagError> {
+        let mut order = Vec::with_capacity(self.nodes.len());
+        self.kahn_run(|node| order.push(node))?;
+        Ok(order)
+    }
+
+    /// Verifies that the graph is acyclic (has a topological ordering).
+    ///
+    /// Equivalent to [`Dag::topological_sort`] succeeding, but makes intent
+    /// explicit when validating data loaded from JSON or built with
+    /// [`SkipCycleCheck`].
+    ///
+    /// **Complexity:** **O(V + E)** time and **O(V)** auxiliary space — uses the
+    /// same Kahn’s algorithm as [`Dag::topological_sort`] but does not build the
+    /// ordering vector.
+    pub fn validate_acyclic(&self) -> Result<(), DagError> {
+        self.kahn_run(|_| ())
+    }
+
+    /// Returns `true` if there is a directed path from `from` to `to`.
+    pub fn has_path(&self, from: NodeId, to: NodeId) -> Result<bool, DagError> {
+        if !self.nodes.contains_key(from.key()) {
+            return Err(DagError::NodeNotFound(from));
+        }
+        if !self.nodes.contains_key(to.key()) {
+            return Err(DagError::NodeNotFound(to));
+        }
+        Ok(self.reachable(from, to))
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    /// Kahn’s algorithm. Invokes `consume` once per node in deterministic order
+    /// (same tie-breaking as [`Dag::topological_sort`]). Returns
+    /// [`DagError::NotAcyclic`] if the graph contains a cycle.
+    fn kahn_run(&self, mut consume: impl FnMut(NodeId)) -> Result<(), DagError> {
         let mut in_degree: std::collections::HashMap<NodeId, usize> = self
             .nodes
             .iter()
@@ -540,10 +589,11 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             v.into()
         };
 
-        let mut result = Vec::with_capacity(self.nodes.len());
+        let mut processed = 0usize;
 
         while let Some(node) = queue.pop_front() {
-            result.push(node);
+            consume(node);
+            processed += 1;
 
             let mut newly_zero: Vec<NodeId> = Vec::new();
             for eid in &self.nodes[node.key()].out_edges {
@@ -562,37 +612,11 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             }
         }
 
-        if result.len() != self.nodes.len() {
+        if processed != self.nodes.len() {
             return Err(DagError::NotAcyclic);
         }
-        Ok(result)
+        Ok(())
     }
-
-    /// Verifies that the graph is acyclic (has a topological ordering).
-    ///
-    /// Equivalent to [`Dag::topological_sort`] succeeding, but makes intent
-    /// explicit when validating data loaded from JSON or built with
-    /// [`SkipCycleCheck`].
-    ///
-    /// **Complexity:** Same as [`Dag::topological_sort`] — **O(V + E)** time and
-    /// **O(V)** auxiliary space (this implementation reuses the topological sort
-    /// to avoid duplicating Kahn’s algorithm).
-    pub fn validate_acyclic(&self) -> Result<(), DagError> {
-        self.topological_sort().map(|_| ())
-    }
-
-    /// Returns `true` if there is a directed path from `from` to `to`.
-    pub fn has_path(&self, from: NodeId, to: NodeId) -> Result<bool, DagError> {
-        if !self.nodes.contains_key(from.key()) {
-            return Err(DagError::NodeNotFound(from));
-        }
-        if !self.nodes.contains_key(to.key()) {
-            return Err(DagError::NodeNotFound(to));
-        }
-        Ok(self.reachable(from, to))
-    }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
 
     /// DFS reachability check (does not validate that nodes exist).
     fn reachable(&self, from: NodeId, to: NodeId) -> bool {
