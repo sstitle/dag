@@ -81,7 +81,7 @@ fn test_set_edge_meta() {
 fn test_node_not_found_error() {
     let (dag, [n1, n2, n3]) = chain();
     let _ = (n1, n2, n3); // suppress unused warning
-                          // Create a dangling id by removing a node.
+    // Create a dangling id by removing a node.
     let mut dag2: Dag<(), ()> = Dag::new();
     let x = dag2.add_node(());
     dag2.remove_node(x).unwrap();

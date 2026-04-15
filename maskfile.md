@@ -3,6 +3,14 @@
 This project uses [mask](https://github.com/jacobdeichert/mask) as a task runner.
 All tasks below are available via `mask <task>` inside `nix develop`.
 
+## format
+
+> Format all tracked files (treefmt via `nix fmt`)
+
+```bash
+nix fmt
+```
+
 ## test
 
 > Run the Rust core test suite (including serde feature)
