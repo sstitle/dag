@@ -8,8 +8,9 @@ export type JsDag = Dag
  * Directed acyclic graph with arbitrary JSON metadata on nodes and edges.
  *
  * Node IDs and edge IDs are returned as plain JavaScript `number` values.
- * They are safe to use as numbers for any practical graph size (values stay
- * well below 2^53).
+ * When passed back into methods, they must be **non-negative integers** within
+ * JavaScript’s safe integer range (`Number.MIN_SAFE_INTEGER` …
+ * `Number.MAX_SAFE_INTEGER`); non-integers and out-of-range values are rejected.
  */
 export declare class Dag {
   /** Create an empty DAG. */

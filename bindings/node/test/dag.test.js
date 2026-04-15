@@ -54,7 +54,7 @@ test('nodeNotFound throws', () => {
   const dag = new Dag();
   const n = dag.addNode(null);
   dag.removeNode(n);
-  assert.throws(() => dag.nodeMeta(n), /not found/i);
+  assert.throws(() => dag.nodeMeta(n), /DAG_NODE_NOT_FOUND/);
 });
 
 test('edgeNotFound throws', () => {
@@ -63,7 +63,7 @@ test('edgeNotFound throws', () => {
   const n2 = dag.addNode(null);
   const e = dag.addEdge(n1, n2, null);
   dag.removeEdge(e);
-  assert.throws(() => dag.edgeMeta(e), /not found/i);
+  assert.throws(() => dag.edgeMeta(e), /DAG_EDGE_NOT_FOUND/);
 });
 
 test('cycle detection throws', () => {
@@ -71,13 +71,13 @@ test('cycle detection throws', () => {
   const n1 = dag.addNode(null);
   const n2 = dag.addNode(null);
   dag.addEdge(n1, n2, null);
-  assert.throws(() => dag.addEdge(n2, n1, null), /cycle/i);
+  assert.throws(() => dag.addEdge(n2, n1, null), /DAG_CYCLE_DETECTED/);
 });
 
 test('self-loop throws', () => {
   const dag = new Dag();
   const n = dag.addNode(null);
-  assert.throws(() => dag.addEdge(n, n, null), /cycle/i);
+  assert.throws(() => dag.addEdge(n, n, null), /DAG_CYCLE_DETECTED/);
 });
 
 // ── duplicate-edge rejection ──────────────────────────────────────────────────
@@ -87,7 +87,7 @@ test('addEdge duplicate throws', () => {
   const n1 = dag.addNode(null);
   const n2 = dag.addNode(null);
   dag.addEdge(n1, n2, null);
-  assert.throws(() => dag.addEdge(n1, n2, null), /already exists/i);
+  assert.throws(() => dag.addEdge(n1, n2, null), /DAG_DUPLICATE_EDGE/);
 });
 
 test('fan-in (different sources, same child) is allowed', () => {
@@ -97,6 +97,18 @@ test('fan-in (different sources, same child) is allowed', () => {
   const child = dag.addNode(null);
   dag.addEdge(r1, child, null);
   dag.addEdge(r2, child, null); // different `from` — must not throw
+});
+
+test('invalid id (NaN) throws', () => {
+  const dag = new Dag();
+  dag.addNode(null);
+  assert.throws(() => dag.nodeMeta(Number.NaN), /DAG_INVALID_ID/);
+});
+
+test('invalid id (fractional) throws', () => {
+  const dag = new Dag();
+  dag.addNode(null);
+  assert.throws(() => dag.nodeMeta(1.5), /DAG_INVALID_ID/);
 });
 
 // ── removeEdge ────────────────────────────────────────────────────────────────
@@ -126,7 +138,7 @@ test('removeEdge nonexistent throws', () => {
   const n2 = dag.addNode(null);
   const e = dag.addEdge(n1, n2, null);
   dag.removeEdge(e);
-  assert.throws(() => dag.removeEdge(e), /not found/i);
+  assert.throws(() => dag.removeEdge(e), /DAG_EDGE_NOT_FOUND/);
 });
 
 test('removeEdge cleans up adjacency', () => {
@@ -202,7 +214,7 @@ test('edgeEndpoints nonexistent throws', () => {
   const n2 = dag.addNode(null);
   const e = dag.addEdge(n1, n2, null);
   dag.removeEdge(e);
-  assert.throws(() => dag.edgeEndpoints(e), /not found/i);
+  assert.throws(() => dag.edgeEndpoints(e), /DAG_EDGE_NOT_FOUND/);
 });
 
 // ── ancestors / descendants ───────────────────────────────────────────────────

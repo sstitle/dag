@@ -1,97 +1,56 @@
 # Maskfile
 
 This project uses [mask](https://github.com/jacobdeichert/mask) as a task runner.
-All tasks below are available via `mask <task>` inside `nix develop`.
+Run tasks from the repo root (e.g. inside `nix develop`).
 
 ## format
 
-> Format all tracked files (treefmt via `nix fmt`)
+> Format tracked files with treefmt (`nix fmt`)
 
 ```bash
 nix fmt
 ```
 
-## test
+## build
 
-> Run the Rust core test suite (including serde feature)
-
-```bash
-cargo test -p dag-core
-cargo test -p dag-core --features serde
-```
-
-## test-python
-
-> Build the Python binding and run pytest
+> Build Python (fresh `.venv` + maturin) and Node (`npm install` + `npm run build`) bindings
 
 ```bash
-mask build-python
-.venv/bin/pip install pytest -q
-.venv/bin/pytest bindings/python/tests/ -v
-```
-
-## test-node
-
-> Build the Node binding and run the test suite
-
-```bash
-mask build-node
-cd bindings/node && npm test
-```
-
-## test-all
-
-> Run all test suites (Rust, Python, Node)
-
-```bash
-mask test
-mask test-python
-mask test-node
-```
-
-## test-nix
-
-> Run Nix unit tests
-
-```bash
-nix-unit ./test.nix
-```
-
-## build-python
-
-> Build the Python binding and install it into a fresh .venv (always recreated to avoid arch mismatches)
-
-```bash
+set -e
 rm -rf .venv
 python3 -m venv .venv
 VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo.toml
+( cd bindings/node && npm install && npm run build )
 ```
 
-## build-node
+## test
 
-> Build the Node.js binding for the current platform — produces index.<platform>.node + index.js + index.d.ts
+> Rust (`dag-core` + `serde`), Python (pytest), Node (`npm test`), and `nix-unit` on `test.nix`
 
 ```bash
-cd bindings/node && npm install && npm run build
+set -e
+cargo test -p dag-core
+cargo test -p dag-core --features serde
+rm -rf .venv
+python3 -m venv .venv
+VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo.toml
+.venv/bin/pip install pytest -q
+.venv/bin/pytest bindings/python/tests/ -v
+( cd bindings/node && npm install && npm run build && npm test )
+nix-unit ./test.nix
 ```
 
-## setup
+## run
 
-> Build both bindings from scratch (run this once after cloning or switching machines)
-
-```bash
-mask build-python
-mask build-node
-```
-
-## run-examples
-
-> Run both example scripts (builds Python binding first if .venv is absent)
+> Run `examples/example.py` and the Node `example` script (creates `.venv` + builds Python binding if missing)
 
 ```bash
+set -e
 if [ ! -f .venv/bin/python ]; then
-  mask build-python
+  rm -rf .venv
+  python3 -m venv .venv
+  VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo.toml
 fi
 .venv/bin/python examples/example.py
-cd bindings/node && npm run example
+( cd bindings/node && npm install && npm run example )
 ```

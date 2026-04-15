@@ -42,7 +42,5 @@
             formatting = treefmtEval.config.build.check self;
           };
         };
-
-      flake.tests = import ./test.nix;
     };
 }

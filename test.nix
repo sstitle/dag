@@ -1,37 +1,22 @@
+# nix-unit tests for repository invariants (run: `nix develop -c nix-unit ./test.nix`).
 {
-  testAddition = {
-    expr = 1 + 1;
-    expected = 2;
+  testCargoTomlDeclaresWorkspace = {
+    expr = (builtins.match ".*\"core\".*" (builtins.readFile ./Cargo.toml)) != null;
+    expected = true;
   };
 
-  testStringConcatenation = {
-    expr = "hello" + " " + "world";
-    expected = "hello world";
+  testCoreCrateNamedDagCore = {
+    expr = (builtins.match ".*name = \"dag-core\".*" (builtins.readFile ./core/Cargo.toml)) != null;
+    expected = true;
   };
 
-  testListFilter = {
-    expr = builtins.filter (x: x > 2) [
-      1
-      2
-      3
-      4
-    ];
-    expected = [
-      3
-      4
-    ];
+  testReadmeReferencesDagCore = {
+    expr = (builtins.match ".*dag-core.*" (builtins.readFile ./README.md)) != null;
+    expected = true;
   };
 
-  testMap = {
-    expr = map (x: x * 2) [
-      1
-      2
-      3
-    ];
-    expected = [
-      2
-      4
-      6
-    ];
+  testFlakeExposesFormatter = {
+    expr = (builtins.match ".*treefmt.*" (builtins.readFile ./flake.nix)) != null;
+    expected = true;
   };
 }

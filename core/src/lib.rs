@@ -127,8 +127,12 @@ pub struct CheckCycles;
 
 /// Skips the acyclicity check on [`Dag::add_edge`].
 ///
-/// Calling [`Dag::topological_sort`] on a graph with cycles built with this
-/// policy is **undefined behaviour** (it silently returns a partial ordering).
+/// If you insert edges that create a cycle, [`Dag::topological_sort`] is no
+/// longer well-defined: it may return a list shorter than the node count (a
+/// partial order) without surfacing an error. **Release builds do not detect
+/// this** — only [`debug_assert!`] in [`Dag::topological_sort`] fires in debug
+/// builds. This is *not* Rust undefined behaviour; it is a logical error if you
+/// treat the result as a full topological order.
 pub struct SkipCycleCheck;
 
 impl private::Sealed for CheckCycles {}
@@ -429,13 +433,21 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             .collect()
     }
 
-    /// Kahn's algorithm — returns a valid topological ordering.
-    /// Ties are broken by [`NodeId`] value for determinism.
+    /// Kahn's algorithm — returns a valid topological ordering when the graph
+    /// is acyclic. Ties are broken by [`NodeId`] value for determinism.
+    ///
+    /// # Cycles and [`SkipCycleCheck`]
+    ///
+    /// If the graph contains a cycle (only possible after using
+    /// [`SkipCycleCheck`] to bypass cycle checks), this method returns a vector
+    /// whose length is **strictly less than** `nodes().len()` — not a valid
+    /// topological order of every node. **Release builds do not panic or return
+    /// `Err`;** only a [`debug_assert!`] runs in debug builds.
     ///
     /// # Panics (debug builds only)
     ///
-    /// Panics if the graph contains a cycle. This can only happen when using
-    /// [`SkipCycleCheck`] policy with a graph that has cycles.
+    /// [`debug_assert!`] if the graph contains a cycle in the [`SkipCycleCheck`]
+    /// case described above.
     pub fn topological_sort(&self) -> Vec<NodeId> {
         let mut in_degree: std::collections::HashMap<NodeId, usize> = self
             .nodes

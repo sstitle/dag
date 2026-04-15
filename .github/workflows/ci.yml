@@ -105,3 +105,19 @@ jobs:
 
       - name: Run Node tests
         run: cd bindings/node && npm test
+
+  # ── Nix (treefmt + nix-unit) ───────────────────────────────────────────────
+  nix:
+    name: Nix flake check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v14
+
+      - name: Flake check (treefmt)
+        run: nix flake check -L
+
+      - name: nix-unit (repository tests)
+        run: nix develop -c nix-unit ./test.nix

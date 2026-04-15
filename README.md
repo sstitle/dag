@@ -5,8 +5,10 @@ Licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
 
 ## Features
 
-- Generic `Dag<N, E>` parameterized over node metadata `N` and edge metadata `E`
-- Cycle detection on every edge insertion
+- Generic `Dag<N, E, P>` parameterized over node metadata `N`, edge metadata `E`, and optional
+  cycle-check policy `P` (defaults to checking every `add_edge`; use `SkipCycleCheck` only
+  when you bulk-load a pre-validated acyclic graph)
+- Cycle detection on every edge insertion (with the default policy)
 - Full graph query API: ancestors, descendants, roots, leaves, topological sort, path queries
 - Edge-level mutation: add, remove, and update individual edges without cascading deletion
 - Node and edge introspection: iterate all IDs, query endpoints
@@ -20,8 +22,16 @@ Licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
 ### Core concepts
 
 - **`NodeId`** / **`EdgeId`** — opaque numeric identifiers returned by insertion methods
-- **`DagError`** — `NodeNotFound`, `EdgeNotFound`, `CycleDetected`
-- **`Dag<N, E>`** — the graph itself; not thread-safe without external locking
+- **`DagError`** — `NodeNotFound`, `EdgeNotFound`, `CycleDetected`, `DuplicateEdge`
+- **`Dag<N, E, P>`** — the graph itself (`P` is the [`CyclePolicy`](core/src/lib.rs) type
+  parameter); not thread-safe without external locking
+
+#### Performance (Rust)
+
+- With the default cycle policy, each `add_edge` runs a reachability scan (**O(V + E)** in the
+  worst case) plus a duplicate-edge check (**O(out-degree(from))**).
+- `nodes()` and `edges()` allocate a new `Vec` on each call; avoid calling them in tight loops
+  on very large graphs unless you need a snapshot of all IDs.
 
 ### Rust
 
@@ -48,7 +58,7 @@ dag.remove_node(n1)?;  // remove node and all incident edges
 
 #### Serde
 
-Enable the `serde` feature to derive `Serialize`/`Deserialize` for `Dag<N, E>`:
+Enable the `serde` feature to derive `Serialize`/`Deserialize` for `Dag<N, E, P>`:
 
 ```toml
 dag-core = { version = "0.1", features = ["serde"] }
@@ -79,7 +89,7 @@ dag2 = Dag.from_json(json_str)  # IDs are preserved
 
 Install: `pip install dag` (after building with `maturin`)
 
-Run tests: `mask test-python`
+Run tests: `mask test`
 
 ### Node.js
 
@@ -100,7 +110,11 @@ const dag2 = Dag.fromJson(json);  // IDs are preserved
 
 Install: `npm install @dag-rs/dag`
 
-Run tests: `mask test-node`
+Errors thrown by the native binding use stable message prefixes (`DAG_NODE_NOT_FOUND:`,
+`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:`, `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`) so you
+can branch without `instanceof`. Node and edge IDs must be **non-negative integers** within
+JavaScript’s safe integer range (`Number.MIN_SAFE_INTEGER` … `Number.MAX_SAFE_INTEGER`) when
+passed into methods.
 
 ## Development
 
@@ -113,21 +127,20 @@ Run tests: `mask test-node`
 
 ```bash
 direnv allow        # or: nix develop
-mask setup          # build Python and Node bindings
-mask test-all       # run all test suites
+mask build          # Python + Node bindings
+mask test           # Rust, Python, Node, and nix-unit
 ```
 
 ### Available tasks
 
 ```
-mask test           # Rust core (+ serde feature)
-mask test-python    # build Python binding, run pytest
-mask test-node      # build Node binding, run node:test
-mask test-all       # all three
-mask build-python   # build Python extension into .venv
-mask build-node     # build Node native extension
-mask run-examples   # run examples/example.py and examples/example.ts
+mask format   # treefmt (nix fmt)
+mask build    # Python .venv + maturin, Node npm build
+mask test     # cargo, pytest, npm test, nix-unit
+mask run      # example scripts (Python + Node)
 ```
+
+`nix flake check` (run in CI) verifies treefmt formatting via the flake `checks` output.
 
 ## Project structure
 
@@ -141,5 +154,5 @@ bindings/
     test/               node:test test suite
     index.d.ts          TypeScript declarations
 examples/               Runnable Python and TypeScript examples
-.github/workflows/      CI (Rust + Python + Node on every push/PR)
+.github/workflows/      CI (Rust + Python + Node + Nix flake check on every push/PR)
 ```
