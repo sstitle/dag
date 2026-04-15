@@ -13,6 +13,30 @@ fn chain() -> (Dag<&'static str, ()>, [crate::NodeId; 3]) {
     (dag, [n1, n2, n3])
 }
 
+/// Verify that every edge u→v in `dag` satisfies pos[u] < pos[v] in `order`,
+/// and that `order` contains every node exactly once.
+///
+/// Uses only the public API so it remains decoupled from internal storage.
+fn topo_valid<N, E, P: crate::CyclePolicy>(
+    dag: &crate::Dag<N, E, P>,
+    order: &[crate::NodeId],
+) -> bool {
+    use std::collections::HashMap;
+    let pos: HashMap<crate::NodeId, usize> =
+        order.iter().enumerate().map(|(i, &n)| (n, i)).collect();
+
+    // Every node must appear exactly once.
+    if pos.len() != order.len() || pos.len() != dag.nodes().len() {
+        return false;
+    }
+
+    // For every edge u→v, pos[u] < pos[v].
+    dag.edges().iter().all(|&eid| {
+        let (u, v) = dag.edge_endpoints(eid).unwrap();
+        pos[&u] < pos[&v]
+    })
+}
+
 // ── basic construction ────────────────────────────────────────────────────────
 
 #[test]
@@ -95,9 +119,20 @@ fn test_transitive_cycle_rejected() {
     assert!(matches!(dag.add_edge(c, a, ()), Err(DagError::CycleDetected)));
 }
 
+// ── duplicate-edge rejection ──────────────────────────────────────────────────
+
 #[test]
-fn test_parallel_edges_allowed() {
-    // Two separate roots both pointing to the same child is fine.
+fn test_duplicate_edge_rejected() {
+    let mut dag: Dag<(), ()> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    assert!(matches!(dag.add_edge(a, b, ()), Err(DagError::DuplicateEdge(_, _))));
+}
+
+#[test]
+fn test_fan_in_allowed() {
+    // Two *different* sources → same child is not a duplicate (different `from`).
     let mut dag: Dag<(), ()> = Dag::new();
     let r1 = dag.add_node(());
     let r2 = dag.add_node(());
@@ -118,6 +153,38 @@ fn test_diamond_no_cycle() {
     dag.add_edge(a, c, ()).unwrap();
     dag.add_edge(b, d, ()).unwrap();
     dag.add_edge(c, d, ()).unwrap();
+}
+
+// ── CyclePolicy dependency injection ─────────────────────────────────────────
+
+#[test]
+fn test_skip_cycle_check_allows_back_edge() {
+    use crate::SkipCycleCheck;
+    let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    // SkipCycleCheck: back-edge is not rejected even though it forms a cycle.
+    dag.add_edge(b, a, ()).unwrap();
+}
+
+#[test]
+fn test_skip_cycle_check_still_rejects_self_loops() {
+    use crate::SkipCycleCheck;
+    let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+    let a = dag.add_node(());
+    // Self-loops are rejected regardless of policy.
+    assert!(matches!(dag.add_edge(a, a, ()), Err(DagError::CycleDetected)));
+}
+
+#[test]
+fn test_skip_cycle_check_still_rejects_duplicates() {
+    use crate::SkipCycleCheck;
+    let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    assert!(matches!(dag.add_edge(a, b, ()), Err(DagError::DuplicateEdge(_, _))));
 }
 
 // ── ancestors / descendants ───────────────────────────────────────────────────
@@ -195,33 +262,13 @@ fn test_disconnected_node_no_ancestors_no_descendants() {
 
 // ── topological sort ──────────────────────────────────────────────────────────
 
-fn topo_valid<N, E>(dag: &Dag<N, E>, order: &[crate::NodeId]) -> bool {
-    use std::collections::HashMap;
-    let pos: HashMap<crate::NodeId, usize> =
-        order.iter().enumerate().map(|(i, &n)| (n, i)).collect();
-    // Every node must appear exactly once — verify count matches order length.
-    if pos.len() != order.len() {
-        return false;
-    }
-    // For every edge u→v, pos[u] < pos[v].
-    dag.nodes
-        .iter()
-        .all(|(k, node)| {
-            let u = crate::NodeId::from(k);
-            node.out_edges.iter().all(|eid| {
-                let v = dag.edges[eid.key()].to;
-                pos[&u] < pos[&v]
-            })
-        })
-}
-
 #[test]
 fn test_topo_sort_chain() {
     let (dag, [n1, n2, n3]) = chain();
     let order = dag.topological_sort();
     assert_eq!(order.len(), 3);
     assert!(topo_valid(&dag, &order));
-    // In a chain the order must be exactly n1, n2, n3.
+    // In a chain the deterministic order must be exactly n1, n2, n3.
     assert_eq!(order, vec![n1, n2, n3]);
 }
 
@@ -361,7 +408,7 @@ fn test_remove_edge_nonexistent_errors() {
 #[test]
 fn test_remove_edge_cleans_up_adjacency() {
     let (mut dag, [n1, n2, n3]) = chain();
-    // Find and remove the n1→n2 edge via edge_endpoints.
+    // Find and remove the n1→n2 edge via edge_endpoints (public API only).
     let e = dag
         .edges()
         .into_iter()

@@ -1,5 +1,6 @@
 use slotmap::{DefaultKey, Key, KeyData, SlotMap};
 use std::collections::{HashSet, VecDeque};
+use std::marker::PhantomData;
 use thiserror::Error;
 
 #[cfg(feature = "serde")]
@@ -8,19 +9,44 @@ use serde::{Deserialize, Serialize};
 #[cfg(test)]
 mod tests;
 
+// ── Sealed trait (prevents external CyclePolicy impls) ───────────────────────
+
+mod private {
+    pub trait Sealed {}
+}
+
 // ── ID types ──────────────────────────────────────────────────────────────────
 
-/// Opaque identifier for a node; newtype over u64 (encoded slotmap key).
+/// Opaque identifier for a node; backed by a slotmap key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct NodeId(pub u64);
+pub struct NodeId(u64);
 
-/// Opaque identifier for an edge; newtype over u64 (encoded slotmap key).
+/// Opaque identifier for an edge; backed by a slotmap key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct EdgeId(pub u64);
+pub struct EdgeId(u64);
 
 impl NodeId {
+    /// Returns the raw `u64` encoding of this ID.
+    ///
+    /// The encoding is an implementation detail (slotmap FFI key) and may
+    /// change across versions. Exposed only for language-binding layers.
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+
+    /// Constructs a `NodeId` from its raw `u64` encoding.
+    ///
+    /// Intended exclusively for language-binding layers (e.g. the Node.js
+    /// binding that round-trips IDs through JavaScript `number`). Using this
+    /// to manufacture arbitrary IDs is unsupported and may panic or produce
+    /// incorrect results.
+    #[doc(hidden)]
+    pub fn from_raw(v: u64) -> Self {
+        NodeId(v)
+    }
+
     fn key(self) -> DefaultKey {
         DefaultKey::from(KeyData::from_ffi(self.0))
     }
@@ -33,6 +59,19 @@ impl From<DefaultKey> for NodeId {
 }
 
 impl EdgeId {
+    /// Returns the raw `u64` encoding of this ID.
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+
+    /// Constructs an `EdgeId` from its raw `u64` encoding.
+    ///
+    /// Same caveats as [`NodeId::from_raw`].
+    #[doc(hidden)]
+    pub fn from_raw(v: u64) -> Self {
+        EdgeId(v)
+    }
+
     fn key(self) -> DefaultKey {
         DefaultKey::from(KeyData::from_ffi(self.0))
     }
@@ -54,6 +93,66 @@ pub enum DagError {
     EdgeNotFound(EdgeId),
     #[error("adding edge would create a cycle")]
     CycleDetected,
+    #[error("an edge from {0:?} to {1:?} already exists")]
+    DuplicateEdge(NodeId, NodeId),
+}
+
+// ── Cycle policy — dependency-injection hook ──────────────────────────────────
+
+/// Controls whether [`Dag::add_edge`] validates acyclicity.
+///
+/// Two built-in implementations are provided:
+///
+/// - [`CheckCycles`] (default) — rejects every edge that would form a cycle.
+///   Cost: **O(V + E)** DFS per `add_edge`.
+/// - [`SkipCycleCheck`] — skips the reachability scan entirely. Useful when
+///   bulk-loading pre-validated data. The caller is responsible for ensuring
+///   the resulting graph is acyclic before calling [`Dag::topological_sort`].
+///
+/// The trait is sealed; only the two types above may implement it.
+pub trait CyclePolicy: private::Sealed {
+    /// Returns `true` if adding `from → to` would create a cycle.
+    ///
+    /// `reachable(a, b)` answers whether `b` is reachable from `a` in the
+    /// current graph state, without the new edge present.
+    fn would_create_cycle(
+        reachable: impl Fn(NodeId, NodeId) -> bool,
+        from: NodeId,
+        to: NodeId,
+    ) -> bool;
+}
+
+/// Checks acyclicity on every [`Dag::add_edge`] call (O(V + E) DFS).
+pub struct CheckCycles;
+
+/// Skips the acyclicity check on [`Dag::add_edge`].
+///
+/// Calling [`Dag::topological_sort`] on a graph with cycles built with this
+/// policy is **undefined behaviour** (it silently returns a partial ordering).
+pub struct SkipCycleCheck;
+
+impl private::Sealed for CheckCycles {}
+impl private::Sealed for SkipCycleCheck {}
+
+impl CyclePolicy for CheckCycles {
+    fn would_create_cycle(
+        reachable: impl Fn(NodeId, NodeId) -> bool,
+        from: NodeId,
+        to: NodeId,
+    ) -> bool {
+        // A cycle arises iff `from` is already reachable from `to`.
+        reachable(to, from)
+    }
+}
+
+impl CyclePolicy for SkipCycleCheck {
+    fn would_create_cycle(
+        _reachable: impl Fn(NodeId, NodeId) -> bool,
+        _from: NodeId,
+        _to: NodeId,
+    ) -> bool {
+        false
+    }
 }
 
 // ── Internal storage ──────────────────────────────────────────────────────────
@@ -76,24 +175,47 @@ struct EdgeData<E> {
 
 // ── DAG ───────────────────────────────────────────────────────────────────────
 
-/// A directed acyclic graph generic over node metadata `N` and edge metadata `E`.
+/// A directed acyclic graph generic over node metadata `N`, edge metadata `E`,
+/// and cycle-check policy `P` (defaults to [`CheckCycles`]).
+///
+/// # Dependency injection
+///
+/// Supply a custom [`CyclePolicy`] as the third type parameter to swap the
+/// cycle-detection strategy at compile time with zero runtime overhead:
+///
+/// ```rust
+/// # use dag_core::{Dag, SkipCycleCheck};
+/// let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+/// ```
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct Dag<N, E> {
+#[cfg_attr(
+    feature = "serde",
+    serde(bound(
+        serialize = "N: serde::Serialize, E: serde::Serialize",
+        deserialize = "N: for<'de2> serde::Deserialize<'de2>, \
+                       E: for<'de2> serde::Deserialize<'de2>"
+    ))
+)]
+pub struct Dag<N, E, P = CheckCycles> {
     nodes: SlotMap<DefaultKey, NodeData<N>>,
     edges: SlotMap<DefaultKey, EdgeData<E>>,
+    /// Zero-size marker; not serialised.
+    #[cfg_attr(feature = "serde", serde(skip))]
+    _policy: PhantomData<P>,
 }
 
-impl<N, E> Default for Dag<N, E> {
+impl<N, E, P: CyclePolicy> Default for Dag<N, E, P> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<N, E> Dag<N, E> {
+impl<N, E, P: CyclePolicy> Dag<N, E, P> {
     pub fn new() -> Self {
         Dag {
             nodes: SlotMap::new(),
             edges: SlotMap::new(),
+            _policy: PhantomData,
         }
     }
 
@@ -153,7 +275,18 @@ impl<N, E> Dag<N, E> {
 
     /// Insert a directed edge `from → to` carrying `meta`.
     ///
-    /// Returns [`DagError::CycleDetected`] if the edge would create a cycle.
+    /// **Complexity**: O(V + E) when using the default [`CheckCycles`] policy
+    /// (full DFS reachability scan); O(degree(from)) for the duplicate-edge
+    /// check regardless of policy.
+    ///
+    /// # Errors
+    ///
+    /// - [`DagError::NodeNotFound`] — either endpoint does not exist.
+    /// - [`DagError::CycleDetected`] — the edge would form a cycle (always
+    ///   returned for self-loops; also returned by [`CheckCycles`] for
+    ///   transitive cycles).
+    /// - [`DagError::DuplicateEdge`] — an edge between the same `(from, to)`
+    ///   pair already exists.
     pub fn add_edge(&mut self, from: NodeId, to: NodeId, meta: E) -> Result<EdgeId, DagError> {
         if !self.nodes.contains_key(from.key()) {
             return Err(DagError::NodeNotFound(from));
@@ -162,14 +295,24 @@ impl<N, E> Dag<N, E> {
             return Err(DagError::NodeNotFound(to));
         }
 
-        // Self-loop is always a cycle.
+        // Self-loops are always a cycle, regardless of policy.
         if from == to {
             return Err(DagError::CycleDetected);
         }
 
-        // A cycle exists iff `from` is already reachable from `to`.
-        if self.reachable(to, from) {
+        // Policy-injected cycle check (O(V+E) for CheckCycles, O(1) for SkipCycleCheck).
+        if P::would_create_cycle(|a, b| self.reachable(a, b), from, to) {
             return Err(DagError::CycleDetected);
+        }
+
+        // Reject duplicate (from, to) pairs — O(degree(from)).
+        // Checked after the cycle test so that cycle errors take precedence.
+        let is_duplicate = self.nodes[from.key()]
+            .out_edges
+            .iter()
+            .any(|&eid| self.edges[eid.key()].to == to);
+        if is_duplicate {
+            return Err(DagError::DuplicateEdge(from, to));
         }
 
         let key = self.edges.insert(EdgeData { from, to, meta });
@@ -288,15 +431,18 @@ impl<N, E> Dag<N, E> {
 
     /// Kahn's algorithm — returns a valid topological ordering.
     /// Ties are broken by [`NodeId`] value for determinism.
+    ///
+    /// # Panics (debug builds only)
+    ///
+    /// Panics if the graph contains a cycle. This can only happen when using
+    /// [`SkipCycleCheck`] policy with a graph that has cycles.
     pub fn topological_sort(&self) -> Vec<NodeId> {
-        // Build in-degree map.
         let mut in_degree: std::collections::HashMap<NodeId, usize> = self
             .nodes
             .iter()
             .map(|(k, n)| (NodeId::from(k), n.in_edges.len()))
             .collect();
 
-        // Seed queue with zero-in-degree nodes, sorted for determinism.
         let mut queue: VecDeque<NodeId> = {
             let mut v: Vec<NodeId> = in_degree
                 .iter()
@@ -326,6 +472,13 @@ impl<N, E> Dag<N, E> {
                 queue.push_back(n);
             }
         }
+
+        debug_assert_eq!(
+            result.len(),
+            self.nodes.len(),
+            "topological_sort produced a partial result — the graph contains a cycle; \
+             this is only possible when using SkipCycleCheck policy"
+        );
 
         result
     }

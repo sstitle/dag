@@ -80,6 +80,25 @@ test('self-loop throws', () => {
   assert.throws(() => dag.addEdge(n, n, null), /cycle/i);
 });
 
+// ── duplicate-edge rejection ──────────────────────────────────────────────────
+
+test('addEdge duplicate throws', () => {
+  const dag = new Dag();
+  const n1 = dag.addNode(null);
+  const n2 = dag.addNode(null);
+  dag.addEdge(n1, n2, null);
+  assert.throws(() => dag.addEdge(n1, n2, null), /already exists/i);
+});
+
+test('fan-in (different sources, same child) is allowed', () => {
+  const dag = new Dag();
+  const r1 = dag.addNode(null);
+  const r2 = dag.addNode(null);
+  const child = dag.addNode(null);
+  dag.addEdge(r1, child, null);
+  dag.addEdge(r2, child, null); // different `from` — must not throw
+});
+
 // ── removeEdge ────────────────────────────────────────────────────────────────
 
 test('removeEdge disconnects nodes', () => {

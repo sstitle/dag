@@ -23,7 +23,7 @@ export declare class Dag {
   removeNode(id: number): void
   /**
    * Add a directed edge `from → to` carrying `meta`.
-   * Throws if the edge would create a cycle.
+   * Throws if the edge would create a cycle or if the edge already exists.
    */
   addEdge(from: number, to: number, meta: any): number
   /** Remove a single edge by ID, leaving its endpoint nodes intact. */

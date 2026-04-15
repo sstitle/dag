@@ -1,6 +1,15 @@
+import math
 import json
 import pytest
-from dag import Dag, NodeId, EdgeId, DagNodeNotFoundError, DagEdgeNotFoundError, DagCycleError
+from dag import (
+    Dag,
+    NodeId,
+    EdgeId,
+    DagNodeNotFoundError,
+    DagEdgeNotFoundError,
+    DagCycleError,
+    DagDuplicateEdgeError,
+)
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -68,6 +77,47 @@ def test_edge_id_equality_and_hash():
     assert hash(e) == hash(edges[0])
 
 
+# ── NodeId / EdgeId ordering ──────────────────────────────────────────────────
+
+def test_node_id_lt():
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    # Nodes are allocated in insertion order; n1 < n2.
+    assert n1 < n2
+    assert not n2 < n1
+
+
+def test_node_id_sortable():
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    n3 = dag.add_node(None)
+    shuffled = [n3, n1, n2]
+    assert sorted(shuffled) == [n1, n2, n3]
+
+
+def test_edge_id_lt():
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    n3 = dag.add_node(None)
+    e1 = dag.add_edge(n1, n2, None)
+    e2 = dag.add_edge(n2, n3, None)
+    assert e1 < e2
+    assert not e2 < e1
+
+
+def test_node_id_le_ge():
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    assert n1 <= n2
+    assert n2 >= n1
+    assert n1 <= n1
+    assert n1 >= n1
+
+
 # ── exception types ───────────────────────────────────────────────────────────
 
 def test_node_not_found_raises_correct_exception():
@@ -114,6 +164,63 @@ def test_self_loop_raises_cycle_error():
 
 def test_cycle_error_is_exception_subclass():
     assert issubclass(DagCycleError, Exception)
+
+
+# ── duplicate-edge rejection ──────────────────────────────────────────────────
+
+def test_duplicate_edge_raises():
+    dag = Dag()
+    n1 = dag.add_node(None)
+    n2 = dag.add_node(None)
+    dag.add_edge(n1, n2, None)
+    with pytest.raises(DagDuplicateEdgeError):
+        dag.add_edge(n1, n2, None)
+
+
+def test_duplicate_edge_error_is_exception_subclass():
+    assert issubclass(DagDuplicateEdgeError, Exception)
+
+
+def test_fan_in_not_duplicate():
+    """Two different sources → same child is not a duplicate."""
+    dag = Dag()
+    r1 = dag.add_node(None)
+    r2 = dag.add_node(None)
+    child = dag.add_node(None)
+    dag.add_edge(r1, child, None)
+    dag.add_edge(r2, child, None)  # different `from` — must not raise
+
+
+# ── non-finite float rejection ────────────────────────────────────────────────
+
+def test_nan_metadata_raises():
+    dag = Dag()
+    with pytest.raises(ValueError):
+        dag.add_node(float("nan"))
+
+
+def test_inf_metadata_raises():
+    dag = Dag()
+    with pytest.raises(ValueError):
+        dag.add_node(float("inf"))
+
+
+def test_neg_inf_metadata_raises():
+    dag = Dag()
+    with pytest.raises(ValueError):
+        dag.add_node(float("-inf"))
+
+
+def test_nan_in_nested_list_raises():
+    dag = Dag()
+    with pytest.raises(ValueError):
+        dag.add_node([1, float("nan"), 3])
+
+
+def test_finite_float_allowed():
+    dag = Dag()
+    n = dag.add_node(3.14)
+    assert dag.node_meta(n) == pytest.approx(3.14)
 
 
 # ── remove_edge ───────────────────────────────────────────────────────────────

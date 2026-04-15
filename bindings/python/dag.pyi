@@ -2,7 +2,8 @@
 Type stubs for the dag Python extension.
 
 Metadata on nodes and edges must be JSON-serialisable (None, bool, int, float,
-str, list, or dict with string keys).
+str, list, or dict with string keys).  Non-finite floats (NaN, ±Inf) are not
+valid JSON and will raise ``ValueError``.
 """
 
 from typing import Any, Tuple
@@ -18,25 +19,44 @@ class DagEdgeNotFoundError(Exception):
 class DagCycleError(Exception):
     """Raised when adding an edge would create a cycle."""
 
+class DagDuplicateEdgeError(Exception):
+    """Raised when an edge between the given (from, to) pair already exists."""
+
 # ── ID types ──────────────────────────────────────────────────────────────────
 
 class NodeId:
-    """Opaque identifier for a node."""
+    """Opaque identifier for a node.
+
+    Supports equality, hashing, and full ordering (``<``, ``<=``, ``>``,
+    ``>=``), so instances can be sorted and used in sorted containers.
+    """
 
     @property
     def value(self) -> int: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
+    def __lt__(self, other: "NodeId") -> bool: ...
+    def __le__(self, other: "NodeId") -> bool: ...
+    def __gt__(self, other: "NodeId") -> bool: ...
+    def __ge__(self, other: "NodeId") -> bool: ...
 
 class EdgeId:
-    """Opaque identifier for an edge."""
+    """Opaque identifier for an edge.
+
+    Supports equality, hashing, and full ordering (``<``, ``<=``, ``>``,
+    ``>=``), so instances can be sorted and used in sorted containers.
+    """
 
     @property
     def value(self) -> int: ...
     def __repr__(self) -> str: ...
     def __eq__(self, other: object) -> bool: ...
     def __hash__(self) -> int: ...
+    def __lt__(self, other: "EdgeId") -> bool: ...
+    def __le__(self, other: "EdgeId") -> bool: ...
+    def __gt__(self, other: "EdgeId") -> bool: ...
+    def __ge__(self, other: "EdgeId") -> bool: ...
 
 # ── Dag ───────────────────────────────────────────────────────────────────────
 
@@ -54,7 +74,10 @@ class Dag:
     # Nodes
 
     def add_node(self, meta: Any) -> NodeId:
-        """Insert a node with the given metadata and return its NodeId."""
+        """Insert a node with the given metadata and return its NodeId.
+
+        Raises ``ValueError`` if *meta* contains a non-finite float.
+        """
 
     def remove_node(self, node: NodeId) -> None:
         """Remove a node and all edges incident to it.
@@ -72,6 +95,7 @@ class Dag:
         """Replace the metadata of *node*.
 
         Raises DagNodeNotFoundError if the node does not exist.
+        Raises ``ValueError`` if *meta* contains a non-finite float.
         """
 
     def nodes(self) -> list[NodeId]:
@@ -84,6 +108,8 @@ class Dag:
 
         Raises DagCycleError if the edge would create a cycle.
         Raises DagNodeNotFoundError if either endpoint does not exist.
+        Raises DagDuplicateEdgeError if an edge between these nodes already exists.
+        Raises ``ValueError`` if *meta* contains a non-finite float.
         """
 
     def remove_edge(self, edge: EdgeId) -> None:
@@ -102,6 +128,7 @@ class Dag:
         """Replace the metadata of *edge*.
 
         Raises DagEdgeNotFoundError if the edge does not exist.
+        Raises ``ValueError`` if *meta* contains a non-finite float.
         """
 
     def edge_endpoints(self, edge: EdgeId) -> Tuple[NodeId, NodeId]:
