@@ -244,7 +244,11 @@ impl PyDag {
 
     /// A valid topological ordering of all nodes.
     pub fn topological_sort(&self) -> Vec<PyNodeId> {
-        self.inner.topological_sort().into_iter().map(PyNodeId).collect()
+        self.inner
+            .topological_sort()
+            .into_iter()
+            .map(PyNodeId)
+            .collect()
     }
 
     /// Whether there is a directed path from `from_node` to `to_node`.
@@ -268,7 +272,9 @@ impl PyDag {
         meta: PyObject,
     ) -> PyResult<()> {
         let json_meta = py_to_json(py, &meta.bind(py).clone())?;
-        self.inner.set_node_meta(node.0, json_meta).map_err(to_py_err)
+        self.inner
+            .set_node_meta(node.0, json_meta)
+            .map_err(to_py_err)
     }
 
     /// Return the metadata of `edge`.
@@ -285,20 +291,21 @@ impl PyDag {
         meta: PyObject,
     ) -> PyResult<()> {
         let json_meta = py_to_json(py, &meta.bind(py).clone())?;
-        self.inner.set_edge_meta(edge.0, json_meta).map_err(to_py_err)
+        self.inner
+            .set_edge_meta(edge.0, json_meta)
+            .map_err(to_py_err)
     }
 
     /// Serialize the DAG to a JSON string.
     pub fn to_json(&self) -> PyResult<String> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| PyValueError::new_err(e.to_string()))
+        serde_json::to_string(&self.inner).map_err(|e| PyValueError::new_err(e.to_string()))
     }
 
     /// Deserialize a DAG from a JSON string.
     #[staticmethod]
     pub fn from_json(s: &str) -> PyResult<Self> {
-        let inner: Dag<Value, Value> = serde_json::from_str(s)
-            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+        let inner: Dag<Value, Value> =
+            serde_json::from_str(s).map_err(|e| PyValueError::new_err(e.to_string()))?;
         Ok(PyDag { inner })
     }
 }
@@ -310,9 +317,18 @@ fn dag(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyDag>()?;
     m.add_class::<PyNodeId>()?;
     m.add_class::<PyEdgeId>()?;
-    m.add("DagNodeNotFoundError", m.py().get_type_bound::<DagNodeNotFoundError>())?;
-    m.add("DagEdgeNotFoundError", m.py().get_type_bound::<DagEdgeNotFoundError>())?;
+    m.add(
+        "DagNodeNotFoundError",
+        m.py().get_type_bound::<DagNodeNotFoundError>(),
+    )?;
+    m.add(
+        "DagEdgeNotFoundError",
+        m.py().get_type_bound::<DagEdgeNotFoundError>(),
+    )?;
     m.add("DagCycleError", m.py().get_type_bound::<DagCycleError>())?;
-    m.add("DagDuplicateEdgeError", m.py().get_type_bound::<DagDuplicateEdgeError>())?;
+    m.add(
+        "DagDuplicateEdgeError",
+        m.py().get_type_bound::<DagDuplicateEdgeError>(),
+    )?;
     Ok(())
 }

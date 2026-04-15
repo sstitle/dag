@@ -74,7 +74,11 @@ impl JsDag {
     #[napi]
     pub fn add_edge(&mut self, from: f64, to: f64, meta: Value) -> Result<f64> {
         self.inner
-            .add_edge(NodeId::from_raw(from as u64), NodeId::from_raw(to as u64), meta)
+            .add_edge(
+                NodeId::from_raw(from as u64),
+                NodeId::from_raw(to as u64),
+                meta,
+            )
             .map(edge_id_to_f64)
             .map_err(to_napi)
     }
@@ -136,7 +140,11 @@ impl JsDag {
     /// Nodes with no outgoing edges.
     #[napi]
     pub fn leaves(&self) -> Vec<f64> {
-        self.inner.leaves().into_iter().map(node_id_to_f64).collect()
+        self.inner
+            .leaves()
+            .into_iter()
+            .map(node_id_to_f64)
+            .collect()
     }
 
     /// A valid topological ordering of all nodes.
@@ -197,15 +205,14 @@ impl JsDag {
     /// `Dag.fromJson` restores the same IDs.
     #[napi]
     pub fn to_json(&self) -> Result<String> {
-        serde_json::to_string(&self.inner)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))
+        serde_json::to_string(&self.inner).map_err(|e| napi::Error::from_reason(e.to_string()))
     }
 
     /// Deserialize a DAG from a JSON string produced by `toJson`.
     #[napi(factory)]
     pub fn from_json(s: String) -> Result<Self> {
-        let inner: Dag<Value, Value> = serde_json::from_str(&s)
-            .map_err(|e| napi::Error::from_reason(e.to_string()))?;
+        let inner: Dag<Value, Value> =
+            serde_json::from_str(&s).map_err(|e| napi::Error::from_reason(e.to_string()))?;
         Ok(JsDag { inner })
     }
 }

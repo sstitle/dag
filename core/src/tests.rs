@@ -81,7 +81,7 @@ fn test_set_edge_meta() {
 fn test_node_not_found_error() {
     let (dag, [n1, n2, n3]) = chain();
     let _ = (n1, n2, n3); // suppress unused warning
-    // Create a dangling id by removing a node.
+                          // Create a dangling id by removing a node.
     let mut dag2: Dag<(), ()> = Dag::new();
     let x = dag2.add_node(());
     dag2.remove_node(x).unwrap();
@@ -95,7 +95,10 @@ fn test_node_not_found_error() {
 fn test_self_loop_rejected() {
     let mut dag: Dag<(), ()> = Dag::new();
     let n = dag.add_node(());
-    assert!(matches!(dag.add_edge(n, n, ()), Err(DagError::CycleDetected)));
+    assert!(matches!(
+        dag.add_edge(n, n, ()),
+        Err(DagError::CycleDetected)
+    ));
 }
 
 #[test]
@@ -104,7 +107,10 @@ fn test_direct_back_edge_rejected() {
     let a = dag.add_node(());
     let b = dag.add_node(());
     dag.add_edge(a, b, ()).unwrap();
-    assert!(matches!(dag.add_edge(b, a, ()), Err(DagError::CycleDetected)));
+    assert!(matches!(
+        dag.add_edge(b, a, ()),
+        Err(DagError::CycleDetected)
+    ));
 }
 
 #[test]
@@ -116,7 +122,10 @@ fn test_transitive_cycle_rejected() {
     dag.add_edge(a, b, ()).unwrap();
     dag.add_edge(b, c, ()).unwrap();
     // c → a would close the cycle a → b → c → a.
-    assert!(matches!(dag.add_edge(c, a, ()), Err(DagError::CycleDetected)));
+    assert!(matches!(
+        dag.add_edge(c, a, ()),
+        Err(DagError::CycleDetected)
+    ));
 }
 
 // ── duplicate-edge rejection ──────────────────────────────────────────────────
@@ -127,7 +136,10 @@ fn test_duplicate_edge_rejected() {
     let a = dag.add_node(());
     let b = dag.add_node(());
     dag.add_edge(a, b, ()).unwrap();
-    assert!(matches!(dag.add_edge(a, b, ()), Err(DagError::DuplicateEdge(_, _))));
+    assert!(matches!(
+        dag.add_edge(a, b, ()),
+        Err(DagError::DuplicateEdge(_, _))
+    ));
 }
 
 #[test]
@@ -174,7 +186,10 @@ fn test_skip_cycle_check_still_rejects_self_loops() {
     let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
     let a = dag.add_node(());
     // Self-loops are rejected regardless of policy.
-    assert!(matches!(dag.add_edge(a, a, ()), Err(DagError::CycleDetected)));
+    assert!(matches!(
+        dag.add_edge(a, a, ()),
+        Err(DagError::CycleDetected)
+    ));
 }
 
 #[test]
@@ -184,7 +199,10 @@ fn test_skip_cycle_check_still_rejects_duplicates() {
     let a = dag.add_node(());
     let b = dag.add_node(());
     dag.add_edge(a, b, ()).unwrap();
-    assert!(matches!(dag.add_edge(a, b, ()), Err(DagError::DuplicateEdge(_, _))));
+    assert!(matches!(
+        dag.add_edge(a, b, ()),
+        Err(DagError::DuplicateEdge(_, _))
+    ));
 }
 
 // ── ancestors / descendants ───────────────────────────────────────────────────
@@ -495,7 +513,10 @@ fn test_edge_endpoints_nonexistent_errors() {
     let b = dag.add_node(());
     let e = dag.add_edge(a, b, ()).unwrap();
     dag.remove_edge(e).unwrap();
-    assert!(matches!(dag.edge_endpoints(e), Err(DagError::EdgeNotFound(_))));
+    assert!(matches!(
+        dag.edge_endpoints(e),
+        Err(DagError::EdgeNotFound(_))
+    ));
 }
 
 // ── serde ─────────────────────────────────────────────────────────────────────
