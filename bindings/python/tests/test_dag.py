@@ -488,9 +488,7 @@ def test_max_json_nesting_depth_exceeded():
 
 
 def test_max_json_nesting_at_limit_ok():
-    """Exactly ``MAX_JSON_CONVERSION_DEPTH`` nested dicts: ``range(MAX - 1)`` iterations
-    build a chain of ``MAX`` dicts (root plus ``MAX - 1`` nested shells).
-    """
+    # ``range(MAX - 1)`` iterations yield ``MAX`` dicts along the chain (valid at depth limit).
     dag = Dag()
     d = {}
     cur = d
