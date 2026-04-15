@@ -1,7 +1,7 @@
 # dag
 
 A directed acyclic graph (DAG) library written in Rust with Python and Node.js bindings.
-Licensed under [MIT](LICENSE-MIT) OR [Apache-2.0](LICENSE-APACHE).
+Licensed under [MIT](LICENSE).
 
 ## Features
 
