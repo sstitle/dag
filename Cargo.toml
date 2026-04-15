@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "core",
+    "bindings/python",
+    "bindings/node",
+]
+default-members = ["core"]
+resolver = "2"
+
+[workspace.dependencies]
+dag-core = { path = "core" }
+serde_json = "1"

@@ -1,0 +1,17 @@
+{
+  "name": "dag",
+  "version": "0.1.0",
+  "description": "Node.js bindings for the dag-core DAG library (napi-rs)",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "example": "ts-node --project tsconfig.json ../../examples/example.ts"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^2.18.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.0"
+  }
+}

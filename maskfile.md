@@ -1,19 +1,59 @@
 # Maskfile
 
-This is a [mask](https://github.com/jacobdeichert/mask) task runner file.
-
-## hello
-
-> This is an example command you can run with `mask hello`
-
-```bash
-echo "Hello World!"
-```
+This project uses [mask](https://github.com/jacobdeichert/mask) as a task runner.
+All tasks below are available via `mask <task>` inside `nix develop`.
 
 ## test
 
-> Run nix-unit tests
+> Run the Rust core test suite
+
+```bash
+cargo test -p dag-core
+```
+
+## test-nix
+
+> Run Nix unit tests
 
 ```bash
 nix-unit ./test.nix
+```
+
+## build-python
+
+> Build the Python binding and install it into a fresh .venv (always recreated to avoid arch mismatches)
+
+```bash
+rm -rf .venv
+python3 -m venv .venv
+VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo.toml
+```
+
+## build-node
+
+> Build the Node.js binding for the current platform — produces index.<platform>.node + index.js + index.d.ts
+
+```bash
+cd bindings/node && npm install && npm run build
+```
+
+## setup
+
+> Build both bindings from scratch (run this once after cloning or switching machines)
+
+```bash
+mask build-python
+mask build-node
+```
+
+## run-examples
+
+> Run both example scripts (builds Python binding first if .venv is absent)
+
+```bash
+if [ ! -f .venv/bin/python ]; then
+  mask build-python
+fi
+.venv/bin/python examples/example.py
+cd bindings/node && npm run example
 ```

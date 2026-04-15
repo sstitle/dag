@@ -3,3 +3,8 @@ result*
 scratchpad.md
 __pycache__/
 *.egg-info/
+.venv/
+target/
+bindings/node/index.*.node
+bindings/node/node_modules/
+bindings/node/dist/
