@@ -166,6 +166,9 @@ class Dag:
         """Return a valid topological ordering of all nodes.
 
         Ties are broken deterministically by NodeId value.
+
+        Raises :class:`DagCycleError` if the graph is not acyclic (including a graph
+        produced by deserialisation that contains a cycle).
         """
 
     def has_path(self, from_node: NodeId, to_node: NodeId) -> bool:

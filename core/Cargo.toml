@@ -6,6 +6,8 @@ license.workspace = true
 
 [features]
 serde = ["dep:serde", "slotmap/serde"]
+# Expose `NodeId::from_raw` / `EdgeId::from_raw` for FFI (e.g. the Node.js binding).
+raw-id-access = []
 
 [dependencies]
 slotmap = "1"

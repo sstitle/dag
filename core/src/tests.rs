@@ -283,7 +283,7 @@ fn test_disconnected_node_no_ancestors_no_descendants() {
 #[test]
 fn test_topo_sort_chain() {
     let (dag, [n1, n2, n3]) = chain();
-    let order = dag.topological_sort();
+    let order = dag.topological_sort().unwrap();
     assert_eq!(order.len(), 3);
     assert!(topo_valid(&dag, &order));
     // In a chain the deterministic order must be exactly n1, n2, n3.
@@ -302,7 +302,7 @@ fn test_topo_sort_diamond() {
     dag.add_edge(b, d, ()).unwrap();
     dag.add_edge(c, d, ()).unwrap();
 
-    let order = dag.topological_sort();
+    let order = dag.topological_sort().unwrap();
     assert_eq!(order.len(), 4);
     assert!(topo_valid(&dag, &order));
 }
@@ -310,14 +310,25 @@ fn test_topo_sort_diamond() {
 #[test]
 fn test_topo_sort_empty() {
     let dag: Dag<(), ()> = Dag::new();
-    assert!(dag.topological_sort().is_empty());
+    assert!(dag.topological_sort().unwrap().is_empty());
 }
 
 #[test]
 fn test_topo_sort_single_node() {
     let mut dag: Dag<(), ()> = Dag::new();
     let n = dag.add_node(());
-    assert_eq!(dag.topological_sort(), vec![n]);
+    assert_eq!(dag.topological_sort().unwrap(), vec![n]);
+}
+
+#[test]
+fn test_topological_sort_errors_when_graph_has_cycle() {
+    use crate::SkipCycleCheck;
+    let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+    let a = dag.add_node(());
+    let b = dag.add_node(());
+    dag.add_edge(a, b, ()).unwrap();
+    dag.add_edge(b, a, ()).unwrap();
+    assert!(matches!(dag.topological_sort(), Err(DagError::NotAcyclic)));
 }
 
 // ── roots / leaves ────────────────────────────────────────────────────────────
@@ -523,7 +534,7 @@ fn test_edge_endpoints_nonexistent_errors() {
 
 #[cfg(feature = "serde")]
 mod serde_tests {
-    use crate::Dag;
+    use crate::{Dag, DagError};
 
     fn chain_owned() -> (Dag<String, ()>, [crate::NodeId; 3]) {
         let mut dag = Dag::new();
@@ -568,6 +579,19 @@ mod serde_tests {
         let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
 
         assert_eq!(dag2.edge_endpoints(e).unwrap(), (a, b));
+    }
+
+    #[test]
+    fn test_topological_sort_errors_after_deserializing_cyclic_graph() {
+        use crate::SkipCycleCheck;
+        let mut dag: Dag<(), (), SkipCycleCheck> = Dag::new();
+        let a = dag.add_node(());
+        let b = dag.add_node(());
+        dag.add_edge(a, b, ()).unwrap();
+        dag.add_edge(b, a, ()).unwrap();
+        let json = serde_json::to_string(&dag).unwrap();
+        let dag2: Dag<(), ()> = serde_json::from_str(&json).unwrap();
+        assert!(matches!(dag2.topological_sort(), Err(DagError::NotAcyclic)));
     }
 }
 

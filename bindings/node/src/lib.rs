@@ -57,7 +57,7 @@ fn dag_error_to_napi(e: DagError) -> napi::Error {
         DagError::EdgeNotFound(_) => {
             napi::Error::new(napi::Status::InvalidArg, format!("DAG_EDGE_NOT_FOUND: {e}"))
         }
-        DagError::CycleDetected => napi::Error::new(
+        DagError::CycleDetected | DagError::NotAcyclic => napi::Error::new(
             napi::Status::GenericFailure,
             format!("DAG_CYCLE_DETECTED: {e}"),
         ),
@@ -71,28 +71,32 @@ fn dag_error_to_napi(e: DagError) -> napi::Error {
 /// Convert a `NodeId` to a JavaScript `number` (f64).
 ///
 /// JavaScript numbers are IEEE 754 doubles with a 53-bit mantissa, so any
-/// integer up to 2^53 − 1 round-trips losslessly.  This assertion catches
-/// graphs that somehow grow beyond that limit (in practice, slotmap key
-/// generation would exhaust before reaching it).
-fn node_id_to_f64(id: NodeId) -> f64 {
+/// integer up to 2^53 − 1 round-trips losslessly.
+fn try_node_id_to_f64(id: NodeId) -> std::result::Result<f64, napi::Error> {
     let raw = id.raw();
-    debug_assert!(
-        raw <= JS_MAX_SAFE_INTEGER,
-        "node ID {raw} exceeds JavaScript's safe integer range (2^53 − 1); \
-         IDs may be corrupted when passed back to Rust"
-    );
-    raw as f64
+    if raw > JS_MAX_SAFE_INTEGER {
+        return Err(napi::Error::new(
+            napi::Status::InvalidArg,
+            format!(
+                "DAG_ID_NOT_REPRESENTABLE: node id {raw} exceeds JavaScript safe integer range (2^53 − 1)"
+            ),
+        ));
+    }
+    Ok(raw as f64)
 }
 
 /// Convert an `EdgeId` to a JavaScript `number` (f64).
-fn edge_id_to_f64(id: EdgeId) -> f64 {
+fn try_edge_id_to_f64(id: EdgeId) -> std::result::Result<f64, napi::Error> {
     let raw = id.raw();
-    debug_assert!(
-        raw <= JS_MAX_SAFE_INTEGER,
-        "edge ID {raw} exceeds JavaScript's safe integer range (2^53 − 1); \
-         IDs may be corrupted when passed back to Rust"
-    );
-    raw as f64
+    if raw > JS_MAX_SAFE_INTEGER {
+        return Err(napi::Error::new(
+            napi::Status::InvalidArg,
+            format!(
+                "DAG_ID_NOT_REPRESENTABLE: edge id {raw} exceeds JavaScript safe integer range (2^53 − 1)"
+            ),
+        ));
+    }
+    Ok(raw as f64)
 }
 
 /// Directed acyclic graph with arbitrary JSON metadata on nodes and edges.
@@ -117,8 +121,8 @@ impl JsDag {
     /// Add a node carrying `meta` (any JSON value).
     /// Returns the numeric node ID.
     #[napi]
-    pub fn add_node(&mut self, meta: Value) -> f64 {
-        node_id_to_f64(self.inner.add_node(meta))
+    pub fn add_node(&mut self, meta: Value) -> Result<f64> {
+        try_node_id_to_f64(self.inner.add_node(meta))
     }
 
     /// Remove a node and all its incident edges.
@@ -139,8 +143,8 @@ impl JsDag {
                 node_id_from_f64(to, "to")?,
                 meta,
             )
-            .map(edge_id_to_f64)
             .map_err(dag_error_to_napi)
+            .and_then(try_edge_id_to_f64)
     }
 
     /// Remove a single edge by ID, leaving its endpoint nodes intact.
@@ -153,14 +157,22 @@ impl JsDag {
 
     /// All node IDs currently in the graph (unordered).
     #[napi]
-    pub fn nodes(&self) -> Vec<f64> {
-        self.inner.nodes().into_iter().map(node_id_to_f64).collect()
+    pub fn nodes(&self) -> Result<Vec<f64>> {
+        self.inner
+            .nodes()
+            .into_iter()
+            .map(try_node_id_to_f64)
+            .collect()
     }
 
     /// All edge IDs currently in the graph (unordered).
     #[napi]
-    pub fn edges(&self) -> Vec<f64> {
-        self.inner.edges().into_iter().map(edge_id_to_f64).collect()
+    pub fn edges(&self) -> Result<Vec<f64>> {
+        self.inner
+            .edges()
+            .into_iter()
+            .map(try_edge_id_to_f64)
+            .collect()
     }
 
     /// Return the `[from, to]` endpoint node IDs of edge `id`.
@@ -170,51 +182,54 @@ impl JsDag {
             .inner
             .edge_endpoints(edge_id_from_f64(id, "edge id")?)
             .map_err(dag_error_to_napi)?;
-        Ok(vec![node_id_to_f64(from), node_id_to_f64(to)])
+        Ok(vec![try_node_id_to_f64(from)?, try_node_id_to_f64(to)?])
     }
 
     /// Return all ancestors of `id` (nodes from which it is reachable).
     #[napi]
     pub fn ancestors(&self, id: f64) -> Result<Vec<f64>> {
-        self.inner
+        let ids = self
+            .inner
             .ancestors(node_id_from_f64(id, "node id")?)
-            .map(|ids| ids.into_iter().map(node_id_to_f64).collect())
-            .map_err(dag_error_to_napi)
+            .map_err(dag_error_to_napi)?;
+        ids.into_iter().map(try_node_id_to_f64).collect()
     }
 
     /// Return all descendants of `id` (nodes reachable from it).
     #[napi]
     pub fn descendants(&self, id: f64) -> Result<Vec<f64>> {
-        self.inner
+        let ids = self
+            .inner
             .descendants(node_id_from_f64(id, "node id")?)
-            .map(|ids| ids.into_iter().map(node_id_to_f64).collect())
-            .map_err(dag_error_to_napi)
+            .map_err(dag_error_to_napi)?;
+        ids.into_iter().map(try_node_id_to_f64).collect()
     }
 
     /// Nodes with no incoming edges.
     #[napi]
-    pub fn roots(&self) -> Vec<f64> {
-        self.inner.roots().into_iter().map(node_id_to_f64).collect()
+    pub fn roots(&self) -> Result<Vec<f64>> {
+        self.inner
+            .roots()
+            .into_iter()
+            .map(try_node_id_to_f64)
+            .collect()
     }
 
     /// Nodes with no outgoing edges.
     #[napi]
-    pub fn leaves(&self) -> Vec<f64> {
+    pub fn leaves(&self) -> Result<Vec<f64>> {
         self.inner
             .leaves()
             .into_iter()
-            .map(node_id_to_f64)
+            .map(try_node_id_to_f64)
             .collect()
     }
 
     /// A valid topological ordering of all nodes.
     #[napi]
-    pub fn topological_sort(&self) -> Vec<f64> {
-        self.inner
-            .topological_sort()
-            .into_iter()
-            .map(node_id_to_f64)
-            .collect()
+    pub fn topological_sort(&self) -> Result<Vec<f64>> {
+        let ids = self.inner.topological_sort().map_err(dag_error_to_napi)?;
+        ids.into_iter().map(try_node_id_to_f64).collect()
     }
 
     /// Whether there is a directed path from `from` to `to`.
@@ -274,5 +289,19 @@ impl JsDag {
         let inner: Dag<Value, Value> =
             serde_json::from_str(&s).map_err(|e| napi::Error::from_reason(e.to_string()))?;
         Ok(JsDag { inner })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejects_node_id_above_js_safe_integer() {
+        let err = try_node_id_to_f64(NodeId::from_raw(JS_MAX_SAFE_INTEGER + 1)).unwrap_err();
+        assert!(
+            err.to_string().contains("DAG_ID_NOT_REPRESENTABLE"),
+            "unexpected error: {err}"
+        );
     }
 }

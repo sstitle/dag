@@ -37,8 +37,11 @@ jobs:
       - name: Run tests (serde feature)
         run: cargo test -p dag-core --features serde
 
-      - name: Clippy
-        run: cargo clippy -p dag-core --features serde -- -D warnings
+      - name: Clippy (all crates)
+        run: |
+          cargo clippy -p dag-core --features serde --all-targets -- -D warnings
+          cargo clippy -p dag-python --all-targets -- -D warnings
+          cargo clippy -p dag-node --all-targets -- -D warnings
 
   # ── Python binding ─────────────────────────────────────────────────────────
   test-python:
@@ -67,8 +70,8 @@ jobs:
       - name: Create virtualenv
         run: python -m venv .venv
 
-      - name: Install maturin and pytest
-        run: .venv/bin/pip install maturin pytest
+      - name: Install maturin, pytest, and hypothesis
+        run: .venv/bin/pip install maturin pytest hypothesis
 
       - name: Build and install Python binding
         run: .venv/bin/maturin develop --manifest-path bindings/python/Cargo.toml

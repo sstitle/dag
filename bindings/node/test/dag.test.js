@@ -1,5 +1,7 @@
 'use strict';
 
+const fs = require('fs');
+const path = require('path');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Dag } = require('../index.js');
@@ -254,6 +256,12 @@ test('topologicalSort order', () => {
 
 test('topologicalSort empty', () => {
   assert.deepEqual(new Dag().topologicalSort(), []);
+});
+
+test('topologicalSort throws on cyclic graph from fixture JSON', () => {
+  const jsonPath = path.join(__dirname, 'fixtures', 'cyclic_two_node.json');
+  const dag = Dag.fromJson(fs.readFileSync(jsonPath, 'utf8'));
+  assert.throws(() => dag.topologicalSort(), /DAG_CYCLE_DETECTED/);
 });
 
 // ── hasPath ───────────────────────────────────────────────────────────────────

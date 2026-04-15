@@ -34,7 +34,7 @@ cargo test -p dag-core --features serde
 rm -rf .venv
 python3 -m venv .venv
 VIRTUAL_ENV="$(pwd)/.venv" maturin develop --manifest-path bindings/python/Cargo.toml
-.venv/bin/pip install pytest -q
+.venv/bin/pip install pytest hypothesis -q
 .venv/bin/pytest bindings/python/tests/ -v
 ( cd bindings/node && npm install && npm run build && npm test )
 nix-unit ./test.nix

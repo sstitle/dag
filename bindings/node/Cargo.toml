@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-dag-core = { workspace = true, features = ["serde"] }
+dag-core = { workspace = true, features = ["serde", "raw-id-access"] }
 serde_json = { workspace = true }
 napi = { version = "2", features = ["napi4", "serde-json"] }
 napi-derive = "2"

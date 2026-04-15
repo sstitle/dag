@@ -36,17 +36,6 @@ impl NodeId {
         self.0
     }
 
-    /// Constructs a `NodeId` from its raw `u64` encoding.
-    ///
-    /// Intended exclusively for language-binding layers (e.g. the Node.js
-    /// binding that round-trips IDs through JavaScript `number`). Using this
-    /// to manufacture arbitrary IDs is unsupported and may panic or produce
-    /// incorrect results.
-    #[doc(hidden)]
-    pub fn from_raw(v: u64) -> Self {
-        NodeId(v)
-    }
-
     fn key(self) -> DefaultKey {
         DefaultKey::from(KeyData::from_ffi(self.0))
     }
@@ -58,18 +47,24 @@ impl From<DefaultKey> for NodeId {
     }
 }
 
+#[cfg(feature = "raw-id-access")]
+impl NodeId {
+    /// Constructs a `NodeId` from its raw `u64` encoding.
+    ///
+    /// Intended exclusively for language-binding layers (e.g. the Node.js
+    /// binding that round-trips IDs through JavaScript `number`). Enable the
+    /// `raw-id-access` crate feature; using this to manufacture arbitrary IDs
+    /// is unsupported and may panic or produce incorrect results.
+    #[doc(hidden)]
+    pub fn from_raw(v: u64) -> Self {
+        NodeId(v)
+    }
+}
+
 impl EdgeId {
     /// Returns the raw `u64` encoding of this ID.
     pub fn raw(self) -> u64 {
         self.0
-    }
-
-    /// Constructs an `EdgeId` from its raw `u64` encoding.
-    ///
-    /// Same caveats as [`NodeId::from_raw`].
-    #[doc(hidden)]
-    pub fn from_raw(v: u64) -> Self {
-        EdgeId(v)
     }
 
     fn key(self) -> DefaultKey {
@@ -80,6 +75,17 @@ impl EdgeId {
 impl From<DefaultKey> for EdgeId {
     fn from(k: DefaultKey) -> Self {
         EdgeId(k.data().as_ffi())
+    }
+}
+
+#[cfg(feature = "raw-id-access")]
+impl EdgeId {
+    /// Constructs an `EdgeId` from its raw `u64` encoding.
+    ///
+    /// Same caveats as [`NodeId::from_raw`].
+    #[doc(hidden)]
+    pub fn from_raw(v: u64) -> Self {
+        EdgeId(v)
     }
 }
 
@@ -95,6 +101,8 @@ pub enum DagError {
     CycleDetected,
     #[error("an edge from {0:?} to {1:?} already exists")]
     DuplicateEdge(NodeId, NodeId),
+    #[error("graph contains a cycle; topological ordering cannot include every node")]
+    NotAcyclic,
 }
 
 // ── Cycle policy — dependency-injection hook ──────────────────────────────────
@@ -127,12 +135,8 @@ pub struct CheckCycles;
 
 /// Skips the acyclicity check on [`Dag::add_edge`].
 ///
-/// If you insert edges that create a cycle, [`Dag::topological_sort`] is no
-/// longer well-defined: it may return a list shorter than the node count (a
-/// partial order) without surfacing an error. **Release builds do not detect
-/// this** — only [`debug_assert!`] in [`Dag::topological_sort`] fires in debug
-/// builds. This is *not* Rust undefined behaviour; it is a logical error if you
-/// treat the result as a full topological order.
+/// If you insert edges that create a cycle, [`Dag::topological_sort`] returns
+/// [`DagError::NotAcyclic`].
 pub struct SkipCycleCheck;
 
 impl private::Sealed for CheckCycles {}
@@ -436,19 +440,12 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
     /// Kahn's algorithm — returns a valid topological ordering when the graph
     /// is acyclic. Ties are broken by [`NodeId`] value for determinism.
     ///
-    /// # Cycles and [`SkipCycleCheck`]
+    /// # Errors
     ///
-    /// If the graph contains a cycle (only possible after using
-    /// [`SkipCycleCheck`] to bypass cycle checks), this method returns a vector
-    /// whose length is **strictly less than** `nodes().len()` — not a valid
-    /// topological order of every node. **Release builds do not panic or return
-    /// `Err`;** only a [`debug_assert!`] runs in debug builds.
-    ///
-    /// # Panics (debug builds only)
-    ///
-    /// [`debug_assert!`] if the graph contains a cycle in the [`SkipCycleCheck`]
-    /// case described above.
-    pub fn topological_sort(&self) -> Vec<NodeId> {
+    /// Returns [`DagError::NotAcyclic`] if the graph contains a cycle (for example
+    /// after using [`SkipCycleCheck`], or if a cyclic graph was deserialized from
+    /// JSON while using the default [`CheckCycles`] policy for inserts).
+    pub fn topological_sort(&self) -> Result<Vec<NodeId>, DagError> {
         let mut in_degree: std::collections::HashMap<NodeId, usize> = self
             .nodes
             .iter()
@@ -485,14 +482,10 @@ impl<N, E, P: CyclePolicy> Dag<N, E, P> {
             }
         }
 
-        debug_assert_eq!(
-            result.len(),
-            self.nodes.len(),
-            "topological_sort produced a partial result — the graph contains a cycle; \
-             this is only possible when using SkipCycleCheck policy"
-        );
-
-        result
+        if result.len() != self.nodes.len() {
+            return Err(DagError::NotAcyclic);
+        }
+        Ok(result)
     }
 
     /// Returns `true` if there is a directed path from `from` to `to`.

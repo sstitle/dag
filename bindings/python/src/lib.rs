@@ -6,6 +6,26 @@ use serde_json::Value;
 
 // ── JSON ↔ Python conversion ──────────────────────────────────────────────────
 
+/// Maps a Python `int` to a `serde_json::Number` (i64, u64, or non-integer f64 via JSON only).
+fn python_int_to_json_number(obj: &Bound<'_, PyAny>) -> PyResult<serde_json::Number> {
+    let v: i128 = obj.extract().map_err(|_| {
+        PyValueError::new_err(
+            "integer is too large for JSON metadata (must fit in i128 for conversion)",
+        )
+    })?;
+    if let Ok(i) = i64::try_from(v) {
+        return Ok(i.into());
+    }
+    if v >= 0 {
+        if let Ok(u) = u64::try_from(v) {
+            return Ok(u.into());
+        }
+    }
+    Err(PyValueError::new_err(format!(
+        "integer {v} cannot be represented as JSON metadata (supported range is i64 or u64)"
+    )))
+}
+
 fn py_to_json<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Value> {
     use pyo3::types::{PyBool, PyInt};
 
@@ -17,7 +37,7 @@ fn py_to_json<'py>(py: Python<'py>, obj: &Bound<'py, PyAny>) -> PyResult<Value> 
         return Ok(Value::Bool(obj.extract::<bool>()?));
     }
     if obj.is_instance_of::<PyInt>() {
-        return Ok(Value::Number(obj.extract::<i64>()?.into()));
+        return Ok(Value::Number(python_int_to_json_number(obj)?));
     }
     if obj.is_instance_of::<PyFloat>() {
         let f = obj.extract::<f64>()?;
@@ -63,8 +83,12 @@ fn json_to_py(py: Python<'_>, val: &Value) -> PyResult<PyObject> {
         Value::Number(n) => {
             if let Some(i) = n.as_i64() {
                 Ok(i.into_py(py))
+            } else if let Some(u) = n.as_u64() {
+                Ok(u.into_py(py))
+            } else if let Some(f) = n.as_f64() {
+                Ok(f.into_py(py))
             } else {
-                Ok(n.as_f64().unwrap_or(0.0).into_py(py))
+                Err(PyValueError::new_err("invalid JSON number"))
             }
         }
         Value::String(s) => Ok(s.clone().into_py(py)),
@@ -97,7 +121,7 @@ fn to_py_err(e: DagError) -> PyErr {
     match e {
         DagError::NodeNotFound(_) => DagNodeNotFoundError::new_err(msg),
         DagError::EdgeNotFound(_) => DagEdgeNotFoundError::new_err(msg),
-        DagError::CycleDetected => DagCycleError::new_err(msg),
+        DagError::CycleDetected | DagError::NotAcyclic => DagCycleError::new_err(msg),
         DagError::DuplicateEdge(_, _) => DagDuplicateEdgeError::new_err(msg),
     }
 }
@@ -243,12 +267,13 @@ impl PyDag {
     }
 
     /// A valid topological ordering of all nodes.
-    pub fn topological_sort(&self) -> Vec<PyNodeId> {
+    ///
+    /// Raises [`DagCycleError`] if the graph contains a cycle.
+    pub fn topological_sort(&self) -> PyResult<Vec<PyNodeId>> {
         self.inner
             .topological_sort()
-            .into_iter()
-            .map(PyNodeId)
-            .collect()
+            .map(|ids| ids.into_iter().map(PyNodeId).collect())
+            .map_err(to_py_err)
     }
 
     /// Whether there is a directed path from `from_node` to `to_node`.

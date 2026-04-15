@@ -46,7 +46,7 @@ let n3 = dag.add_node("load");
 let e = dag.add_edge(n1, n2, ())?;  // Err(DagError::CycleDetected) if cycle
 dag.add_edge(n2, n3, ())?;
 
-let order = dag.topological_sort();  // [n1, n2, n3]
+let order = dag.topological_sort()?; // [n1, n2, n3]; Err(DagError::NotAcyclic) if cyclic
 let (from, to) = dag.edge_endpoints(e)?;
 
 dag.remove_edge(e)?;   // remove edge, keep nodes
@@ -54,7 +54,11 @@ dag.remove_node(n1)?;  // remove node and all incident edges
 ```
 
 `ancestors()` and `descendants()` return unordered `Vec<NodeId>`.
-`topological_sort()` breaks ties deterministically by `NodeId` value.
+`topological_sort()` breaks ties deterministically by `NodeId` value and returns
+`Err(DagError::NotAcyclic)` when the graph contains a cycle.
+
+For FFI, enable the `raw-id-access` feature on `dag-core` if you need `NodeId::from_raw` /
+`EdgeId::from_raw` (used by the Node.js binding).
 
 #### Serde
 
@@ -85,7 +89,12 @@ dag.remove_edge(e)
 # Serialisation
 json_str = dag.to_json()
 dag2 = Dag.from_json(json_str)  # IDs are preserved
+
+order = dag.topological_sort()  # raises DagCycleError if the graph is not acyclic
 ```
+
+Integer metadata is limited to the range representable in JSON as a 64-bit signed or unsigned
+integer (roughly `i64` / `u64`); larger Python integers raise `ValueError`.
 
 Install: `pip install dag` (after building with `maturin`)
 
@@ -111,10 +120,12 @@ const dag2 = Dag.fromJson(json);  // IDs are preserved
 Install: `npm install @dag-rs/dag`
 
 Errors thrown by the native binding use stable message prefixes (`DAG_NODE_NOT_FOUND:`,
-`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:`, `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`) so you
+`DAG_EDGE_NOT_FOUND:`, `DAG_CYCLE_DETECTED:` (including a failed `topologicalSort` on a cyclic
+graph), `DAG_DUPLICATE_EDGE:`, `DAG_INVALID_ID:`, `DAG_ID_NOT_REPRESENTABLE:`) so you
 can branch without `instanceof`. Node and edge IDs must be **non-negative integers** within
 JavaScript’s safe integer range (`Number.MIN_SAFE_INTEGER` … `Number.MAX_SAFE_INTEGER`) when
-passed into methods.
+passed into methods. Methods that return node or edge IDs throw `DAG_ID_NOT_REPRESENTABLE`
+if an ID cannot be represented as a JavaScript safe integer.
 
 ## Development
 
